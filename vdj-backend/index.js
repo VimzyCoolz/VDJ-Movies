@@ -57,7 +57,13 @@ const storage = multer.diskStorage({
         cb(null, `${Date.now()}-${file.originalname}`);
     }
 });
-const upload = multer({ storage });
+const upload = multer({ 
+    storage,
+    limits: {
+        fileSize: 1024 * 1024 * 500, // 500MB limit for movie files
+        fieldSize: 1024 * 1024 * 10 // 10MB limit for metadata fields
+    }
+});
 
 // Cloud Client Initialization
 const apiId = parseInt(process.env.TELEGRAM_API_ID);
@@ -134,29 +140,71 @@ app.use('/api', apiRouter);
 
 // --- Streaming Engine ---
 
+async function getChannelEntity(activeClient) {
+    if (cachedChannelEntity) return cachedChannelEntity;
+    
+    if (!channelId) {
+        throw new Error("TELEGRAM_CHANNEL_ID is not configured in environment variables");
+    }
+
+    try {
+        console.log(`[${new Date().toISOString()}] RESOLVING_CHANNEL: ${channelId}`);
+        cachedChannelEntity = await activeClient.getEntity(channelId);
+        return cachedChannelEntity;
+    } catch (err) {
+        console.error(`[${new Date().toISOString()}] CHANNEL_RESOLUTION_ERROR:`, err);
+        throw new Error(`Could not access Telegram channel ${channelId}. Make sure the bot is an admin and the ID is correct.`);
+    }
+}
+
 apiRouter.get('/stream/:id', async (req, res) => {
     const fileId = parseInt(req.params.id);
     const range = req.headers.range;
 
+    if (isNaN(fileId)) {
+        return res.status(400).json({ error: 'Invalid movie ID' });
+    }
+
     try {
-        const activeClient = await ensureConnected();
+        console.log(`[${new Date().toISOString()}] STREAM_REQUEST: ID ${fileId}, Range: ${range || 'None'}`);
         
+        const activeClient = await ensureConnected();
+        const entity = await getChannelEntity(activeClient);
+
         // In a real production scenario, we'd fetch the message entity to get the file
         // For now, we'll use the fileId directly if it's a message ID
-        const message = await activeClient.getMessages(channelId, { ids: [fileId] });
+        let message;
+        try {
+            message = await activeClient.getMessages(entity, { ids: [fileId] });
+        } catch (msgErr) {
+            console.error(`[${new Date().toISOString()}] STREAM_FETCH_ERROR:`, msgErr);
+            throw new Error(`Failed to fetch message ${fileId} from channel: ${msgErr.message}`);
+        }
         
         if (!message || !message[0] || !message[0].media) {
+            console.warn(`[${new Date().toISOString()}] STREAM_NOT_FOUND: ID ${fileId}`);
             return res.status(404).json({ error: 'Video not found in cloud storage' });
         }
 
         const media = message[0].media;
-        const fileSize = BigInt(media.document ? media.document.size : (media.photo ? media.photo.size : 0));
+        const document = media.document || media.photo;
+        
+        if (!document) {
+            return res.status(404).json({ error: 'No media found in message' });
+        }
+
+        const fileSize = BigInt(document.size);
+        const fileName = media.document?.attributes?.find(a => a.constructor.name === 'DocumentAttributeFilename')?.fileName || 'video.mp4';
+        const mimeType = media.document?.mimeType || 'video/mp4';
+
+        console.log(`[${new Date().toISOString()}] STREAM_STARTING: ${fileName} (${fileSize} bytes)`);
 
         if (!range) {
             res.status(200).set({
                 'Content-Length': fileSize.toString(),
-                'Content-Type': 'video/mp4',
+                'Content-Type': mimeType,
                 'Accept-Ranges': 'bytes',
+                'Content-Disposition': `inline; filename="${fileName}"`
             });
             
             const stream = activeClient.iterDownload({
@@ -172,19 +220,24 @@ apiRouter.get('/stream/:id', async (req, res) => {
             const parts = range.replace(/bytes=/, "").split("-");
             const start = BigInt(parts[0]);
             const end = parts[1] ? BigInt(parts[1]) : fileSize - 1n;
+            
+            if (start >= fileSize) {
+                return res.status(416).json({ error: 'Requested range not satisfiable' });
+            }
+
             const chunksize = (end - start) + 1n;
 
             res.status(206).set({
                 'Content-Range': `bytes ${start.toString()}-${end.toString()}/${fileSize.toString()}`,
                 'Accept-Ranges': 'bytes',
                 'Content-Length': chunksize.toString(),
-                'Content-Type': 'video/mp4',
+                'Content-Type': mimeType,
             });
 
             const stream = activeClient.iterDownload({
                 file: media,
-                offset: Number(start),
-                limit: Number(chunksize),
+                offset: start,
+                limit: chunksize,
                 requestSize: 1024 * 1024,
             });
 
@@ -194,9 +247,15 @@ apiRouter.get('/stream/:id', async (req, res) => {
             res.end();
         }
     } catch (error) {
-        console.error(`[${new Date().toISOString()}] STREAM_ERROR:`, error);
+        console.error(`[${new Date().toISOString()}] STREAM_CRITICAL_ERROR:`, error);
         if (!res.headersSent) {
-            res.status(500).json({ error: 'Streaming failed', details: error.message });
+            res.status(500).json({ 
+                error: 'Streaming failed', 
+                details: error.message,
+                suggestion: "Check if TELEGRAM_CHANNEL_ID is correct and bot is an admin."
+            });
+        } else {
+            res.end();
         }
     }
 });
@@ -260,16 +319,8 @@ apiRouter.post('/upload', upload.single('movie_file'), async (req, res) => {
         // Ensure client is connected before sending
         const activeClient = await ensureConnected();
         
-        // Resolve channel entity once and cache it to save time on every upload
-        if (!cachedChannelEntity) {
-            try {
-                console.log(`[${new Date().toISOString()}] RESOLVING_CHANNEL: ${channelId}`);
-                cachedChannelEntity = await activeClient.getEntity(channelId);
-            } catch (entityErr) {
-                console.error(`[${new Date().toISOString()}] CHANNEL_RESOLUTION_ERROR:`, entityErr);
-                throw new Error(`Could not access Telegram channel ${channelId}. Make sure the bot is an admin.`);
-            }
-        }
+        // Resolve channel entity
+        const entity = await getChannelEntity(activeClient);
         
         // Check if file still exists before sending
         if (!fs.existsSync(file.path)) {
@@ -282,7 +333,7 @@ apiRouter.post('/upload', upload.single('movie_file'), async (req, res) => {
         // Upload to storage with optimized parameters
         console.log(`[${new Date().toISOString()}] CLOUD_UPLOAD_INIT: ${title} - Using 4 workers, 512KB chunks`);
         
-        const uploadedFile = await activeClient.sendFile(cachedChannelEntity, {
+        const uploadedFile = await activeClient.sendFile(entity, {
             file: file.path, // Read directly from disk
             caption: `🎬 **${title}**\n🎙️ Narrated by: ${dj_name}\n\n${summary}\n\n#${genre}`,
             parseMode: 'markdown',

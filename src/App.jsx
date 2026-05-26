@@ -412,13 +412,29 @@ const UploadScreen = () => {
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [error, setError] = useState(null);
 
   const genres = ['Action', 'Kihindi', 'Comedy', 'Horror', 'Sci-Fi'];
+
+  const handleFileChange = (e) => {
+    const selectedFile = e.target.files[0];
+    if (selectedFile) {
+      // Vercel has a 4.5MB limit for serverless functions
+      if (selectedFile.size > 4.5 * 1024 * 1024) {
+        setError("File is too large for direct uplift (Max 4.5MB on Vercel). Please use a smaller file or contact admin to upgrade hosting.");
+        setFile(null);
+      } else {
+        setError(null);
+        setFile(selectedFile);
+      }
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!file) return;
 
+    setError(null);
     const data = new FormData();
     data.append('dj_name', formData.dj_name);
     data.append('title', formData.title);
@@ -517,19 +533,20 @@ const UploadScreen = () => {
               accept="video/*"
               className="hidden"
               id="file-upload"
-              onChange={(e) => setFile(e.target.files[0])}
+              onChange={handleFileChange}
               disabled={uploading}
             />
             <label 
               htmlFor="file-upload" 
-              className={`flex items-center justify-center gap-2 p-4 rounded-xl border-2 border-dashed transition-colors cursor-pointer ${file ? 'border-gold bg-gold/5 text-gold' : 'border-gray-700 hover:border-gray-500 text-gray-500'}`}
+              className={`flex items-center justify-center gap-2 p-4 rounded-xl border-2 border-dashed transition-colors cursor-pointer ${file ? 'border-gold bg-gold/5 text-gold' : 'border-gray-700 hover:border-gray-500 text-gray-500'} ${error ? 'border-red-500 bg-red-500/5 text-red-500' : ''}`}
             >
               {file ? <CheckCircle2 size={20} /> : <Upload size={20} />}
               <span className="text-sm font-bold truncate max-w-[200px]">
-                {file ? file.name : 'Select movie file from device'}
+                {file ? file.name : (error ? 'File too large' : 'Select movie file from device')}
               </span>
             </label>
           </div>
+          {error && <p className="text-[10px] text-red-500 font-bold mt-1">{error}</p>}
         </div>
 
         {uploading && (
