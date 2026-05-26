@@ -3,7 +3,7 @@ import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
 import { Home, Library, Upload, User, Search, Play, X, CheckCircle2, DownloadCloud, ChevronRight, AlertTriangle, Settings, Pause, Maximize, Minimize } from 'lucide-react';
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5000' : '/api');
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5000/api' : '/api');
 
 // --- Components ---
 
@@ -84,6 +84,7 @@ const VideoPlayer = ({ movie, onClose }) => {
         ref={videoRef}
         src={`${API_BASE_URL}/stream/${movie.telegram_message_id}`}
         className="w-full h-full object-contain"
+        playsInline
         autoPlay
         onClick={togglePlay}
         onMouseMove={resetControlsTimeout}
