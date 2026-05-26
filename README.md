@@ -1,4 +1,4 @@
-# VDJ Movies - Re-initialized & Redesigned
+# VDJ Movies - Re-initialized & Redesigned✔
 
 A professional Netflix-style movie streaming platform for DJ Afro and DJ Smith fans.
 
