@@ -117,7 +117,10 @@ ensureConnected().catch(err => console.error("Initial cloud connection failed:",
 
 app.use(cors());
 app.use(morgan(':method :url :status :res[content-length] - :response-time ms'));
-app.use(express.json());
+
+// Increase payload limits for large movie metadata and uploads
+app.use(express.json({ limit: '500mb' }));
+app.use(express.urlencoded({ limit: '500mb', extended: true }));
 
 // Request logger for debugging
 app.use((req, res, next) => {
