@@ -259,21 +259,37 @@ apiRouter.post('/upload', upload.single('movie_file'), async (req, res) => {
         
         // Resolve channel entity once and cache it to save time on every upload
         if (!cachedChannelEntity) {
-            console.log(`[${new Date().toISOString()}] RESOLVING_CHANNEL: ${channelId}`);
-            cachedChannelEntity = await activeClient.getEntity(channelId);
+            try {
+                console.log(`[${new Date().toISOString()}] RESOLVING_CHANNEL: ${channelId}`);
+                cachedChannelEntity = await activeClient.getEntity(channelId);
+            } catch (entityErr) {
+                console.error(`[${new Date().toISOString()}] CHANNEL_RESOLUTION_ERROR:`, entityErr);
+                throw new Error(`Could not access Telegram channel ${channelId}. Make sure the bot is an admin.`);
+            }
         }
         
+        // Check if file still exists before sending
+        if (!fs.existsSync(file.path)) {
+            throw new Error(`Temporary file lost before cloud upload: ${file.path}`);
+        }
+
+        const fileStats = fs.statSync(file.path);
+        console.log(`[${new Date().toISOString()}] FILE_VERIFIED: ${file.path} (${(fileStats.size / (1024 * 1024)).toFixed(2)} MB)`);
+
         // Upload to storage with optimized parameters
+        console.log(`[${new Date().toISOString()}] CLOUD_UPLOAD_INIT: ${title} - Using 4 workers, 512KB chunks`);
+        
         const uploadedFile = await activeClient.sendFile(cachedChannelEntity, {
             file: file.path, // Read directly from disk
             caption: `🎬 **${title}**\n🎙️ Narrated by: ${dj_name}\n\n${summary}\n\n#${genre}`,
             parseMode: 'markdown',
-            workers: 8, // Increased for higher concurrency
-            maxChunkSize: 1024 * 1024, // 1MB chunks for faster transfer of large files
+            workers: 4, // Reduced from 8 for better stability on smaller instances
+            maxChunkSize: 512 * 1024, // Reduced from 1MB to 512KB for better reliability
+            forceDocument: false, // Allow Telegram to treat it as a video if possible
             progressCallback: (progress) => {
                 const percent = (progress * 100).toFixed(2);
-                // More frequent logging for better visibility in server logs
-                if (Math.floor(percent * 10) % 100 === 0) { 
+                // Log every 5% for better visibility without flooding
+                if (Math.floor(percent * 20) % 100 === 0 || percent === "100.00") { 
                     console.log(`[${new Date().toISOString()}] CLOUD_UPLOAD_PROGRESS: ${title} - ${percent}%`);
                 }
             }

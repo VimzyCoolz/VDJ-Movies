@@ -432,7 +432,7 @@ const UploadScreen = () => {
     try {
       const response = await axios.post(`${API_BASE_URL}/upload`, data, {
         headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 300000, // 5 minute timeout for large movie uploads
+        timeout: 600000, // 10 minute timeout for large movie uploads (increased from 5m)
         onUploadProgress: (progressEvent) => {
           const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
           setProgress(percentCompleted);
