@@ -1,0 +1,10 @@
+node_modules/
+.env
+dist/
+build/
+.DS_Store
+*.log
+vdj-backend/.env
+vdj-frontend/node_modules/
+vdj-backend/node_modules/
+VDJ MOVIES.env
