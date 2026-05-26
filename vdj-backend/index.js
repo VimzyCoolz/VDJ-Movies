@@ -236,8 +236,8 @@ apiRouter.get('/stream/:id', async (req, res) => {
 
             const stream = activeClient.iterDownload({
                 file: media,
-                offset: start,
-                limit: chunksize,
+                offset: Number(start),
+                limit: Number(chunksize),
                 requestSize: 1024 * 1024,
             });
 
