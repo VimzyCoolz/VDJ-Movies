@@ -18,6 +18,7 @@ const VideoPlayer = ({ movie, onClose, user }) => {
   const [zoomMode, setZoomMode] = useState('fit'); // 'fit', 'stretch', 'crop'
   const [watchedTime, setWatchedTime] = useState(0);
   const [viewRegistered, setViewRegistered] = useState(false);
+  const [isLocked, setIsLocked] = useState(false);
   const controlsTimeoutRef = useRef(null);
 
   useEffect(() => {
@@ -140,6 +141,7 @@ const VideoPlayer = ({ movie, onClose, user }) => {
   }, []);
 
   const togglePlay = () => {
+    if (isLocked) return;
     if (videoRef.current.paused) {
       videoRef.current.play();
       setIsPlaying(true);
@@ -150,11 +152,35 @@ const VideoPlayer = ({ movie, onClose, user }) => {
     resetControlsTimeout();
   };
 
+  const handleVideoClick = () => {
+    if (isLocked) {
+      if (showControls) {
+        setShowControls(false);
+      } else {
+        resetControlsTimeout();
+      }
+    } else {
+      togglePlay();
+    }
+  };
+
   const toggleZoomMode = () => {
+    if (isLocked) return;
     const modes = ['fit', 'stretch', 'crop'];
     const nextIndex = (modes.indexOf(zoomMode) + 1) % modes.length;
     setZoomMode(modes[nextIndex]);
     resetControlsTimeout();
+  };
+
+  const toggleLock = (e) => {
+    e.stopPropagation();
+    const newLockedState = !isLocked;
+    setIsLocked(newLockedState);
+    if (newLockedState) {
+      setShowControls(false);
+    } else {
+      resetControlsTimeout();
+    }
   };
 
   const resetControlsTimeout = () => {
@@ -198,20 +224,22 @@ const VideoPlayer = ({ movie, onClose, user }) => {
         className={`w-full h-full transition-all duration-300 ${getObjectFitClass()}`}
         playsInline
         autoPlay
-        onClick={togglePlay}
+        onClick={handleVideoClick}
         onMouseMove={resetControlsTimeout}
       />
 
       {/* Close Button */}
-      <button 
-        onClick={onClose}
-        className="absolute top-4 right-4 p-2 bg-black/50 rounded-full text-white z-[110] hover:bg-black/80 transition-colors"
-      >
-        <X size={24} />
-      </button>
+      {showControls && (
+        <button 
+          onClick={onClose}
+          className="absolute top-4 right-4 p-2 bg-black/50 rounded-full text-white z-[110] hover:bg-black/80 transition-colors"
+        >
+          <X size={24} />
+        </button>
+      )}
 
       {/* Play/Pause Overlay Icon */}
-      {showControls && (
+      {showControls && !isLocked && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="bg-black/40 p-6 rounded-full animate-fade-out">
             {isPlaying ? <Pause size={48} fill="white" /> : <Play size={48} fill="white" />}
@@ -222,39 +250,56 @@ const VideoPlayer = ({ movie, onClose, user }) => {
       {/* Bottom Controls */}
       {showControls && (
         <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/90 to-transparent flex flex-col gap-4">
-          <div className="flex items-center gap-4">
-            <span className="text-white text-xs font-mono">
-              {formatTime(currentTime)} / {formatTime(duration)}
-            </span>
-            <div className="flex-1 h-1.5 bg-gray-600/50 rounded-full overflow-hidden cursor-pointer">
-              <div 
-                className="h-full bg-gold transition-all duration-300 relative" 
-                style={{ width: `${(currentTime / duration) * 100}%` }}
-              >
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg" />
-              </div>
-            </div>
-            
-            <button 
-              onClick={toggleZoomMode}
-              className="flex items-center gap-2 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white text-[10px] font-black uppercase tracking-tighter transition-all"
-            >
-              <Maximize size={14} />
-              <span>{getZoomLabel()}</span>
-            </button>
+          {!isLocked ? (
+            <>
+              <div className="flex items-center gap-4">
+                <span className="text-white text-xs font-mono">
+                  {formatTime(currentTime)} / {formatTime(duration)}
+                </span>
+                <div className="flex-1 h-1.5 bg-gray-600/50 rounded-full overflow-hidden cursor-pointer">
+                  <div 
+                    className="h-full bg-gold transition-all duration-300 relative" 
+                    style={{ width: `${(currentTime / duration) * 100}%` }}
+                  >
+                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg" />
+                  </div>
+                </div>
+                
+                <button 
+                  onClick={toggleZoomMode}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white text-[10px] font-black uppercase tracking-tighter transition-all"
+                >
+                  <Maximize size={14} />
+                  <span>{getZoomLabel()}</span>
+                </button>
 
-            <button className="flex items-center gap-1 text-white text-xs font-bold opacity-50">
-              <Settings size={16} />
-              <span>Quality</span>
-            </button>
-          </div>
-          
-          <div className="flex justify-between items-center">
-            <h3 className="text-white font-bold text-sm truncate max-w-[70%]">{movie.title}</h3>
-            <div className="flex gap-4">
-              {/* Future controls like volume/speed can go here */}
+                <button 
+                  onClick={toggleLock}
+                  className="flex items-center gap-1 text-white text-xs font-bold"
+                >
+                  <Settings size={16} />
+                  <span>Hide</span>
+                </button>
+              </div>
+              
+              <div className="flex justify-between items-center">
+                <h3 className="text-white font-bold text-sm truncate max-w-[70%]">{movie.title}</h3>
+                <div className="flex gap-4">
+                  {/* Future controls like volume/speed can go here */}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex justify-end">
+              <button 
+                onClick={toggleLock}
+                className="flex items-center gap-1 text-white text-xs font-bold bg-white/10 px-4 py-2 rounded-xl border border-white/20 transition-all active:scale-95"
+              >
+                <Settings size={16} />
+                <span>Unhide</span>
+              </button>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>
