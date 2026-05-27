@@ -702,13 +702,14 @@ const ProfileScreen = ({ user, onMovieClick }) => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Mount CoolzTech Shared UI
-    if (window.ctMount) {
+    // Only mount CoolzTech Shared UI if user is NOT logged in
+    // This prevents the "client.getSessions is not a function" error
+    if (!user && window.ctMount) {
       window.ctMount('#coolztech-auth-root', {
         baseUrl: 'https://authcoolztech.vercel.app'
       });
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (user) {
@@ -730,122 +731,137 @@ const ProfileScreen = ({ user, onMovieClick }) => {
   const totalViews = userMovies.reduce((acc, movie) => acc + (movie.views || 0), 0);
 
   return (
-    <div className="pb-20 min-h-screen">
-      <div id="coolztech-auth-root" className="p-4">
-        {/* The CoolzTech Shared UI will mount here if not logged in */}
-        {user ? (
-          <div className="flex flex-col gap-6 p-4">
-            {/* Profile Header */}
-            <div className="bg-[#1e1e1e] rounded-3xl p-6 border border-gray-800 relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-4 opacity-10">
-                <User size={120} />
-              </div>
-              
-              <div className="flex items-center gap-4 mb-6 relative z-10">
-                <div className="w-20 h-20 rounded-2xl bg-gold/10 border-2 border-gold flex items-center justify-center text-gold shadow-lg shadow-gold/20">
-                  {user.avatar_url ? (
-                    <img src={user.avatar_url} alt={user.username} className="w-full h-full object-cover rounded-2xl" />
-                  ) : (
-                    <User size={40} />
-                  )}
-                </div>
-                <div>
-                  <h2 className="font-black text-2xl text-white tracking-tight">{user.username}</h2>
-                  <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">VDJ Publisher</p>
-                  <div className="flex gap-2 mt-2">
-                    <span className="px-2 py-0.5 bg-gold/10 text-gold text-[10px] font-black rounded-md border border-gold/20">VERIFIED</span>
-                  </div>
-                </div>
-              </div>
+    <div className="pb-20 min-h-screen bg-[#0a0a0a]">
+      <div id="coolztech-auth-root">
+        {/* CoolzTech Shared UI mounts here for Login/Signup */}
+      </div>
 
-              <div className="grid grid-cols-2 gap-3 relative z-10">
-                <div className="bg-black/40 p-4 rounded-2xl border border-white/5">
-                  <p className="text-[10px] font-black text-gray-500 uppercase mb-1">Total Movies</p>
-                  <p className="text-xl font-black text-white">{userMovies.length}</p>
+      {user && (
+        <div className="flex flex-col gap-8 animate-slide-up">
+          {/* Hero Profile Header */}
+          <div className="relative h-64 flex items-end px-6 pb-6">
+            {/* Background Aesthetic */}
+            <div className="absolute inset-0 bg-gradient-to-b from-gold/20 via-[#121212] to-[#0a0a0a]" />
+            <div className="absolute inset-0 opacity-10 grayscale contrast-150" style={{ backgroundImage: 'url("/images/VDJ BACKGROUND.png")', backgroundSize: 'cover' }} />
+            
+            <div className="flex items-center gap-5 relative z-10 w-full">
+              <div className="w-24 h-24 rounded-3xl bg-[#1e1e1e] border-4 border-[#0a0a0a] flex items-center justify-center text-gold shadow-2xl overflow-hidden">
+                {user.avatar_url ? (
+                  <img src={user.avatar_url} alt={user.username} className="w-full h-full object-cover" />
+                ) : (
+                  <User size={48} strokeWidth={1.5} />
+                )}
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <h2 className="font-black text-3xl text-white tracking-tight uppercase italic">{user.username}</h2>
+                  <CheckCircle2 size={20} className="text-blue-500 fill-blue-500/20" />
                 </div>
-                <div className="bg-black/40 p-4 rounded-2xl border border-white/5">
-                  <p className="text-[10px] font-black text-gray-500 uppercase mb-1">Total Views</p>
-                  <p className="text-xl font-black text-gold">{totalViews.toLocaleString()}</p>
-                </div>
+                <p className="text-[10px] text-gold font-black uppercase tracking-[0.2em] mt-1 bg-gold/10 px-2 py-0.5 rounded-md border border-gold/20 inline-block">
+                  Official VDJ Publisher
+                </p>
               </div>
             </div>
+          </div>
 
-            {/* User Movies */}
-            <div>
-              <h3 className="text-lg font-black text-white mb-4 px-2 flex items-center gap-2">
-                <Play size={20} className="text-gold" fill="currentColor" />
-                MY PUBLICATIONS
+          {/* Stats Cards */}
+          <div className="px-6 grid grid-cols-2 gap-4">
+            <div className="bg-[#121212] p-5 rounded-[2rem] border border-white/5 flex flex-col items-center justify-center text-center shadow-lg">
+              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Publications</p>
+              <p className="text-3xl font-black text-white">{userMovies.length}</p>
+            </div>
+            <div className="bg-[#121212] p-5 rounded-[2rem] border border-white/5 flex flex-col items-center justify-center text-center shadow-lg">
+              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Total Reach</p>
+              <p className="text-3xl font-black text-gold">{totalViews.toLocaleString()}</p>
+            </div>
+          </div>
+
+          {/* My Collection Section */}
+          <div className="px-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-sm font-black text-white uppercase tracking-[0.1em] flex items-center gap-2">
+                <Play size={18} className="text-gold" fill="currentColor" />
+                Your Uplifts
               </h3>
-              
-              {loading ? (
-                <div className="flex justify-center py-10">
-                  <div className="w-8 h-8 border-4 border-gold border-t-transparent rounded-full animate-spin"></div>
-                </div>
-              ) : userMovies.length > 0 ? (
-                <div className="grid grid-cols-2 gap-4">
-                  {userMovies.map(movie => (
-                    <div 
-                      key={movie.id} 
-                      className="bg-[#1e1e1e] rounded-2xl overflow-hidden border border-gray-800 active:scale-95 transition-all cursor-pointer group"
-                      onClick={() => onMovieClick(movie)}
-                    >
-                      <div className="aspect-video relative">
-                        <img 
-                          src={movie.thumbnail || `https://picsum.photos/seed/${movie.id}/400/225`} 
-                          className="w-full h-full object-cover" 
-                          alt={movie.title} 
-                        />
-                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Play fill="white" size={24} />
+              <Link to="/upload" className="text-[10px] font-black text-gold border-b border-gold/30 pb-0.5">NEW UPLOAD</Link>
+            </div>
+            
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-20 opacity-30">
+                <div className="w-8 h-8 border-2 border-gold border-t-transparent rounded-full animate-spin mb-3"></div>
+                <p className="text-[10px] font-bold">SCANNING ARCHIVES...</p>
+              </div>
+            ) : userMovies.length > 0 ? (
+              <div className="grid grid-cols-2 gap-x-4 gap-y-6">
+                {userMovies.map(movie => (
+                  <div 
+                    key={movie.id} 
+                    className="flex flex-col gap-3 group active:scale-95 transition-transform"
+                    onClick={() => onMovieClick(movie)}
+                  >
+                    <div className="aspect-[4/5] rounded-[1.5rem] overflow-hidden relative border border-white/5 shadow-xl bg-gray-900">
+                      <img 
+                        src={movie.thumbnail || `https://picsum.photos/seed/${movie.id}/400/500`} 
+                        className="w-full h-full object-cover grayscale-[0.2] group-hover:grayscale-0 transition-all duration-500" 
+                        alt={movie.title} 
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60" />
+                      <div className="absolute bottom-3 left-3 right-3 flex justify-between items-center">
+                        <div className="px-2 py-1 bg-black/60 backdrop-blur-md rounded-lg border border-white/10 flex items-center gap-1">
+                          <Play size={10} className="text-gold" fill="currentColor" />
+                          <span className="text-[10px] font-black text-white">{movie.views}</span>
                         </div>
                       </div>
-                      <div className="p-3">
-                        <p className="text-xs font-black text-white truncate">{movie.title}</p>
-                        <p className="text-[9px] text-gray-500 font-bold mt-1 uppercase">{movie.genre} • ⭐ {movie.views}</p>
-                      </div>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="bg-[#1e1e1e] rounded-2xl p-10 text-center border border-dashed border-gray-800 opacity-50">
-                  <DownloadCloud size={40} className="mx-auto mb-4 text-gray-600" />
-                  <p className="text-sm font-bold text-gray-400">No movies published yet.</p>
-                  <Link to="/upload" className="text-xs text-gold font-black mt-2 inline-block uppercase tracking-widest">Upload Now</Link>
-                </div>
-              )}
-            </div>
+                    <div className="px-1">
+                      <p className="text-xs font-black text-white truncate uppercase tracking-tight">{movie.title}</p>
+                      <p className="text-[8px] text-gray-500 font-black mt-0.5 uppercase tracking-widest">{movie.genre}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="bg-[#121212] rounded-[2.5rem] p-12 text-center border border-dashed border-white/10">
+                <DownloadCloud size={48} className="mx-auto mb-4 text-gray-800" strokeWidth={1} />
+                <p className="text-sm font-black text-gray-500 uppercase tracking-tighter">Your library is empty</p>
+                <p className="text-[10px] text-gray-600 mt-1 mb-6">Start uploading to build your VDJ profile</p>
+                <Link 
+                  to="/upload" 
+                  className="bg-gold text-black text-[10px] font-black px-6 py-3 rounded-full uppercase tracking-widest hover:scale-105 active:scale-95 transition-all inline-block shadow-lg shadow-gold/20"
+                >
+                  Publish Now
+                </Link>
+              </div>
+            )}
+          </div>
 
-            {/* Account Actions */}
-            <div className="flex flex-col gap-3 mt-4">
-              <button className="flex items-center justify-between p-5 bg-[#1e1e1e] rounded-2xl text-sm font-black text-gray-300 border border-gray-800 active:bg-gray-800 transition-all">
-                <div className="flex items-center gap-3">
-                  <Settings size={20} className="text-gray-500" />
-                  ACCOUNT SETTINGS
+          {/* Quick Actions / Settings */}
+          <div className="px-6 flex flex-col gap-3 pb-10">
+            <button className="flex items-center justify-between p-5 bg-[#121212] rounded-[1.5rem] text-[11px] font-black text-gray-400 border border-white/5 hover:bg-[#1a1a1a] transition-all">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500">
+                  <Settings size={18} />
                 </div>
-                <ChevronRight size={18} className="text-gray-600" />
-              </button>
-              <button 
-                onClick={() => {
-                  if (window.CoolzAuthClient) {
-                    const client = new window.CoolzAuthClient({ baseUrl: 'https://authcoolztech.vercel.app' });
-                    client.logout();
-                    window.location.reload();
-                  }
-                }}
-                className="flex items-center justify-center p-5 bg-red-500/5 rounded-2xl text-sm font-black text-red-500 border border-red-500/20 active:bg-red-500/10 transition-all"
-              >
-                LOGOUT SESSION
-              </button>
-            </div>
+                ACCOUNT CONFIGURATION
+              </div>
+              <ChevronRight size={18} className="text-gray-700" />
+            </button>
+            
+            <button 
+              onClick={() => {
+                if (window.CoolzAuthClient) {
+                  const client = new window.CoolzAuthClient({ baseUrl: 'https://authcoolztech.vercel.app' });
+                  client.logout();
+                  window.location.reload();
+                }
+              }}
+              className="flex items-center justify-center p-5 bg-red-500/5 rounded-[1.5rem] text-[11px] font-black text-red-500 border border-red-500/10 active:bg-red-500/10 transition-all uppercase tracking-widest"
+            >
+              Terminate Session
+            </button>
           </div>
-        ) : (
-          /* Placeholder while CoolzTech UI mounts or if it fails */
-          <div className="flex flex-col items-center justify-center py-20 opacity-50">
-            <div className="w-10 h-10 border-4 border-gold border-t-transparent rounded-full animate-spin mb-4"></div>
-            <p className="text-sm font-bold text-gray-500">SECURE LOGIN LOADING...</p>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
