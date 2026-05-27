@@ -462,6 +462,51 @@ const GenreRow = ({ title, movies, onMovieClick }) => (
   </div>
 );
 
+// --- Utilities ---
+
+/**
+ * Calculates the similarity score between two strings using Levenshtein distance
+ * and Damerau-Levenshtein logic (for transpositions).
+ * Returns a score between 0 and 1.
+ */
+const getSimilarity = (s1, s2) => {
+  if (!s1 || !s2) return 0;
+  s1 = s1.toLowerCase();
+  s2 = s2.toLowerCase();
+  
+  if (s1 === s2) return 1;
+  if (s1.includes(s2) || s2.includes(s1)) {
+    return Math.min(s1.length, s2.length) / Math.max(s1.length, s2.length);
+  }
+
+  const l1 = s1.length;
+  const l2 = s2.length;
+  const matrix = Array(l1 + 1).fill(null).map(() => Array(l2 + 1).fill(0));
+
+  for (let i = 0; i <= l1; i++) matrix[i][0] = i;
+  for (let j = 0; j <= l2; j++) matrix[0][j] = j;
+
+  for (let i = 1; i <= l1; i++) {
+    for (let j = 1; j <= l2; j++) {
+      const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,      // deletion
+        matrix[i][j - 1] + 1,      // insertion
+        matrix[i - 1][j - 1] + cost // substitution
+      );
+      
+      // Damerau adjustment for transpositions
+      if (i > 1 && j > 1 && s1[i - 1] === s2[j - 2] && s1[i - 2] === s2[j - 1]) {
+        matrix[i][j] = Math.min(matrix[i][j], matrix[i - 2][j - 2] + cost);
+      }
+    }
+  }
+
+  const distance = matrix[l1][l2];
+  const maxLen = Math.max(l1, l2);
+  return 1 - distance / maxLen;
+};
+
 // --- Pages ---
 
 const DEFAULT_QUERIES = [
@@ -478,6 +523,7 @@ const HomeScreen = ({ onMovieClick }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [trendingIndex, setTrendingIndex] = useState(0);
+  const [isFuzzyMatch, setIsFuzzyMatch] = useState(false);
   const searchInputRef = useRef(null);
   
   // Trending rotation logic (5 seconds)
@@ -514,15 +560,41 @@ const HomeScreen = ({ onMovieClick }) => {
     fetchData();
   }, []);
 
-  const filteredMovies = React.useMemo(() => {
-    if (!searchQuery.trim()) return movies;
+  const { filteredMovies, isFuzzy } = React.useMemo(() => {
+    if (!searchQuery.trim()) return { filteredMovies: movies, isFuzzy: false };
+    
     const query = searchQuery.toLowerCase().trim();
-    return movies.filter(movie => 
+    
+    // 1. Try Exact/Substring Matching
+    const exactMatches = movies.filter(movie => 
       (movie.title && movie.title.toLowerCase().includes(query)) || 
       (movie.dj_name && movie.dj_name.toLowerCase().includes(query)) ||
       (movie.genre && movie.genre.toLowerCase().includes(query))
     );
+
+    if (exactMatches.length > 0) {
+      return { filteredMovies: exactMatches, isFuzzy: false };
+    }
+
+    // 2. Fuzzy Matching (Triggered only if no exact matches)
+    const fuzzyResults = movies.map(movie => {
+      const titleScore = getSimilarity(movie.title || '', query);
+      const djScore = getSimilarity(movie.dj_name || '', query);
+      const genreScore = getSimilarity(movie.genre || '', query);
+      const maxScore = Math.max(titleScore, djScore, genreScore);
+      
+      return { ...movie, score: maxScore };
+    })
+    .filter(movie => movie.score >= 0.1) // 10% threshold
+    .sort((a, b) => b.score - a.score);
+
+    return { filteredMovies: fuzzyResults, isFuzzy: fuzzyResults.length > 0 };
   }, [movies, searchQuery]);
+
+  // Sync isFuzzyMatch state for UI feedback
+  useEffect(() => {
+    setIsFuzzyMatch(isFuzzy);
+  }, [isFuzzy]);
 
   const getMoviesByGenre = (genre) => {
     if (!Array.isArray(filteredMovies)) return [];
@@ -580,8 +652,8 @@ const HomeScreen = ({ onMovieClick }) => {
            )}
 
            {/* Dropdown Suggestions Panel */}
-           {isFocused && (
-             <div className="absolute top-full left-0 right-0 mt-2 bg-[#1e1e1e] rounded-2xl border border-gray-800 shadow-2xl overflow-hidden animate-slide-up z-50">
+          {isFocused && !searchQuery && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-[#1e1e1e] rounded-2xl border border-gray-800 shadow-2xl overflow-hidden animate-slide-up z-50">
                <div className="p-3 border-b border-gray-800/50 flex items-center justify-between">
                  <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Trending Searches</span>
                  <TrendingUp size={12} className="text-green-500" />
@@ -618,9 +690,17 @@ const HomeScreen = ({ onMovieClick }) => {
         <>
           {searchQuery ? (
             <div className="px-4 py-2 flex flex-col gap-6 animate-slide-up">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest">Search Results ({filteredMovies.length})</h2>
-                <button onClick={() => setSearchQuery('')} className="text-[10px] font-black text-gold uppercase tracking-widest">Clear</button>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest">Search Results ({filteredMovies.length})</h2>
+                  <button onClick={() => setSearchQuery('')} className="text-[10px] font-black text-gold uppercase tracking-widest">Clear</button>
+                </div>
+                {isFuzzyMatch && (
+                  <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 flex items-center gap-2">
+                    <AlertTriangle size={14} className="text-blue-500" />
+                    <p className="text-[10px] font-bold text-blue-400">No exact matches found. Showing results for matching search instead.</p>
+                  </div>
+                )}
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 {filteredMovies.map(movie => (
