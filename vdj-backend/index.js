@@ -69,12 +69,12 @@ const upload = multer({
 const apiId = parseInt(process.env.TELEGRAM_API_ID);
 const apiHash = process.env.TELEGRAM_API_HASH;
 const botToken = process.env.TELEGRAM_BOT_TOKEN;
+const dcId = parseInt(process.env.TELEGRAM_DC_ID) || 4; // Default to 4, but allow override to 2
 let channelId = process.env.TELEGRAM_CHANNEL_ID;
 let cachedChannelEntity = null;
 
 // Normalize Channel ID
 if (channelId && !channelId.startsWith('-100') && !channelId.startsWith('@')) {
-    // If it's a numeric ID but missing the -100 prefix (common for channels)
     if (/^\d+$/.test(channelId)) {
         channelId = `-100${channelId}`;
     }
@@ -82,7 +82,8 @@ if (channelId && !channelId.startsWith('-100') && !channelId.startsWith('@')) {
 
 const client = new TelegramClient(new StringSession(""), apiId, apiHash, {
     connectionRetries: 5,
-    useWSS: false // Force TCP in Node.js
+    useWSS: false,
+    dcId: dcId, // Explicitly set the Data Center ID
 });
 
 // Helper to ensure cloud client is connected
@@ -209,7 +210,8 @@ apiRouter.get('/stream/:id', async (req, res) => {
             
             const stream = activeClient.iterDownload({
                 file: media,
-                requestSize: 1024 * 1024, // 1MB chunks
+                offset: BigInt(0), // Explicitly pass 0n to avoid internal default to Number 0
+                requestSize: 1024 * 1024,
             });
 
             for await (const chunk of stream) {
