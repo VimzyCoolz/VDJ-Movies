@@ -551,6 +551,29 @@ const DEFAULT_QUERIES = [
   "Best Horror Movies"
 ];
 
+const LoadingScreen = () => (
+  <div className="flex flex-col items-center justify-center min-h-[60vh] w-full p-8 animate-in fade-in duration-700">
+    <div className="relative w-48 h-48 md:w-64 md:h-64 mb-6">
+      {/* Mobile Loading Image */}
+      <img 
+        src="/images/VDJ LOADING.png" 
+        className="w-full h-full object-contain md:hidden animate-pulse" 
+        alt="Loading..." 
+      />
+      {/* Desktop Loading Image */}
+      <img 
+        src="/images/LOADING_PC.png" 
+        className="w-full h-full object-contain hidden md:block animate-pulse" 
+        alt="Loading..." 
+      />
+    </div>
+    <div className="w-32 h-1 bg-gray-800 rounded-full overflow-hidden relative">
+      <div className="absolute inset-0 bg-gold animate-shimmer" />
+    </div>
+    <p className="mt-4 text-[10px] font-black text-gold uppercase tracking-[0.3em] opacity-50">Syncing Archives...</p>
+  </div>
+);
+
 const HomeScreen = ({ onMovieClick }) => {
   const [movies, setMovies] = useState([]);
   const [suggestions, setSuggestions] = useState(DEFAULT_QUERIES);
@@ -643,11 +666,7 @@ const HomeScreen = ({ onMovieClick }) => {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-10 h-10 border-4 border-gold border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   return (
@@ -1222,7 +1241,6 @@ const ProfileScreen = ({ user, onMovieClick }) => {
           <div className="relative h-64 flex items-end px-6 pb-6">
             {/* Background Aesthetic */}
             <div className="absolute inset-0 bg-gradient-to-b from-gold/20 via-[#121212] to-[#0a0a0a]" />
-            <div className="absolute inset-0 opacity-10 grayscale contrast-150" style={{ backgroundImage: 'url("/images/VDJ BACKGROUND.png")', backgroundSize: 'cover' }} />
             
             <div className="flex items-center gap-5 relative z-10 w-full">
               <div className="w-24 h-24 rounded-3xl bg-[#1e1e1e] border-4 border-[#0a0a0a] flex items-center justify-center text-gold shadow-2xl overflow-hidden">
@@ -1267,10 +1285,7 @@ const ProfileScreen = ({ user, onMovieClick }) => {
             </div>
             
             {loading ? (
-              <div className="flex flex-col items-center justify-center py-20 opacity-30">
-                <div className="w-8 h-8 border-2 border-gold border-t-transparent rounded-full animate-spin mb-3"></div>
-                <p className="text-[10px] font-bold">SCANNING ARCHIVES...</p>
-              </div>
+              <LoadingScreen />
             ) : userMovies.length > 0 ? (
               <div className="grid grid-cols-2 gap-x-4 gap-y-6">
                 {userMovies.map(movie => (
@@ -1404,7 +1419,24 @@ const App = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row max-w-md md:max-w-none mx-auto shadow-2xl relative bg-[#0f0f0f]">
+    <div className="min-h-screen flex flex-col md:flex-row max-w-md md:max-w-none mx-auto shadow-2xl relative bg-[#0f0f0f] overflow-hidden">
+      {/* Dynamic Background Layer */}
+      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+        {/* Mobile Background */}
+        <img 
+          src="/images/VDJ BACKGROUND.png" 
+          className="w-full h-full object-cover opacity-10 grayscale contrast-125 md:hidden" 
+          alt="" 
+        />
+        {/* Desktop Background */}
+        <img 
+          src="/images/BACKGROUND_PC.png" 
+          className="w-full h-full object-cover opacity-5 grayscale contrast-150 hidden md:block" 
+          alt="" 
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0f0f0f]/50 via-transparent to-[#0f0f0f]" />
+      </div>
+
       {/* Desktop Hamburger Menu */}
       <button 
         onClick={() => setIsSideNavOpen(!isSideNavOpen)}
@@ -1413,7 +1445,7 @@ const App = () => {
         {isSideNavOpen ? <X size={24} /> : <Menu size={24} />}
       </button>
 
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto relative z-10">
         <Routes>
           <Route path="/" element={<HomeScreen onMovieClick={handleMovieClick} />} />
           <Route path="/library" element={<LibraryScreen />} />
