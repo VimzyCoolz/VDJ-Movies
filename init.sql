@@ -7,6 +7,7 @@
 -- ALTER TABLE movies ADD COLUMN IF NOT EXISTS telegram_link TEXT;
 -- ALTER TABLE movies ADD COLUMN IF NOT EXISTS telegram_message_id INTEGER;
 -- ALTER TABLE movies ADD COLUMN IF NOT EXISTS publisher_name TEXT;
+-- ALTER TABLE movies ADD COLUMN IF NOT EXISTS size TEXT;
 
 -- Movies table
 CREATE TABLE IF NOT EXISTS movies (
@@ -20,6 +21,7 @@ CREATE TABLE IF NOT EXISTS movies (
     publisher_name TEXT,
     thumbnail_url TEXT,
     duration TEXT,
+    size TEXT,
     views INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

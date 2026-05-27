@@ -301,7 +301,7 @@ const MovieBottomSheet = ({ movie, isOpen, onClose, onPlay }) => {
             <span className="w-1 h-1 bg-gray-600 rounded-full" />
             <span className="text-gold uppercase tracking-widest">{movie.genre}</span>
             <span className="w-1 h-1 bg-gray-600 rounded-full" />
-            <span>205 MB</span>
+            <span>{movie.size || '205 MB'}</span>
           </div>
 
           <p className="text-sm text-gray-300 leading-relaxed mb-8">

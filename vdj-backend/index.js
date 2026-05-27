@@ -544,10 +544,19 @@ apiRouter.post('/upload', upload.single('movie_file'), async (req, res) => {
 
         // Construct internal tracking link
         const storage_link = `https://cloud-storage.vdj-movies.com/c/${channelId.replace('-100', '')}/${uploadedFile.id}`;
+        
+        // Calculate human readable size
+        const sizeInBytes = file.size;
+        let sizeFormatted = '0 MB';
+        if (sizeInBytes >= 1024 * 1024 * 1024) {
+            sizeFormatted = `${(sizeInBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+        } else {
+            sizeFormatted = `${(sizeInBytes / (1024 * 1024)).toFixed(2)} MB`;
+        }
 
         const result = await db.query(
-            'INSERT INTO movies (dj_name, title, summary, genre, telegram_link, telegram_message_id, publisher_name) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-            [dj_name, title, summary, genre, storage_link, uploadedFile.id, publisher_name || 'Anonymous']
+            'INSERT INTO movies (dj_name, title, summary, genre, telegram_link, telegram_message_id, publisher_name, size) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+            [dj_name, title, summary, genre, storage_link, uploadedFile.id, publisher_name || 'Anonymous', sizeFormatted]
         );
         
         const totalDuration = ((Date.now() - startTime) / 1000).toFixed(2);
