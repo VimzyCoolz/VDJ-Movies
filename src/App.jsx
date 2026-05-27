@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Library, Upload, User, Search, Play, X, CheckCircle2, DownloadCloud, ChevronRight, AlertTriangle, Settings, Pause, Maximize, Minimize, Trash2, Image as ImageIcon } from 'lucide-react';
+import { Home, Library, Upload, User, Search, Play, X, CheckCircle2, DownloadCloud, ChevronRight, AlertTriangle, Settings, Pause, Maximize, Minimize, Trash2, Image as ImageIcon, TrendingUp } from 'lucide-react';
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5000/api' : '/api');
@@ -464,29 +464,75 @@ const GenreRow = ({ title, movies, onMovieClick }) => (
 
 // --- Pages ---
 
+const DEFAULT_QUERIES = [
+  "DJ Afro Action",
+  "DJ Smith Comedy",
+  "Latest Kihindi 2024",
+  "Best Horror Movies"
+];
+
 const HomeScreen = ({ onMovieClick }) => {
   const [movies, setMovies] = useState([]);
+  const [suggestions, setSuggestions] = useState(DEFAULT_QUERIES);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
+  const [trendingIndex, setTrendingIndex] = useState(0);
+  const searchInputRef = useRef(null);
   
+  // Trending rotation logic (5 seconds)
   useEffect(() => {
-    const fetchMovies = async () => {
+    if (isFocused || searchQuery || suggestions.length === 0) return;
+    
+    const interval = setInterval(() => {
+      setTrendingIndex((prev) => (prev + 1) % suggestions.length);
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [isFocused, searchQuery, suggestions]);
+
+  useEffect(() => {
+    const fetchData = async () => {
       try {
-        const response = await axios.get(`${API_BASE_URL}/movies`);
-        // Ensure we always have an array, even if API returns something else
-        setMovies(Array.isArray(response.data) ? response.data : []);
+        const [moviesRes, suggestionsRes] = await Promise.all([
+          axios.get(`${API_BASE_URL}/movies`),
+          axios.get(`${API_BASE_URL}/suggestions`)
+        ]);
+        
+        setMovies(Array.isArray(moviesRes.data) ? moviesRes.data : []);
+        
+        if (Array.isArray(suggestionsRes.data) && suggestionsRes.data.length > 0) {
+          setSuggestions(suggestionsRes.data);
+        }
       } catch (error) {
-        console.error('Failed to fetch movies:', error);
-        setMovies([]); // Reset to empty array on error
+        console.error('Failed to fetch data:', error);
+        setMovies([]); 
       } finally {
         setLoading(false);
       }
     };
-    fetchMovies();
+    fetchData();
   }, []);
 
+  const filteredMovies = React.useMemo(() => {
+    if (!searchQuery.trim()) return movies;
+    const query = searchQuery.toLowerCase().trim();
+    return movies.filter(movie => 
+      (movie.title && movie.title.toLowerCase().includes(query)) || 
+      (movie.dj_name && movie.dj_name.toLowerCase().includes(query)) ||
+      (movie.genre && movie.genre.toLowerCase().includes(query))
+    );
+  }, [movies, searchQuery]);
+
   const getMoviesByGenre = (genre) => {
-    if (!Array.isArray(movies)) return [];
-    return movies.filter(m => m.genre === genre);
+    if (!Array.isArray(filteredMovies)) return [];
+    return filteredMovies.filter(m => m.genre === genre);
+  };
+
+  const handleSuggestionClick = (query) => {
+    setSearchQuery(query);
+    setIsFocused(false);
+    if (searchInputRef.current) searchInputRef.current.blur();
   };
 
   if (loading) {
@@ -502,27 +548,95 @@ const HomeScreen = ({ onMovieClick }) => {
       {/* Search Bar at the very top */}
       <div className="sticky top-0 bg-[#0f0f0f] z-40 p-4 pt-6">
         <div className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 z-10" size={20} />
           <input 
+            ref={searchInputRef}
             type="text" 
-            placeholder="Search DJ Afro, DJ Smith, or movie titles..." 
-            className="w-full bg-[#1e1e1e] border-none rounded-full py-3 pl-12 pr-4 text-sm focus:ring-1 focus:ring-gold outline-none placeholder:text-gray-500"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setTimeout(() => setIsFocused(false), 200)}
+            placeholder={!isFocused && !searchQuery ? "" : "Search DJ Afro, DJ Smith, or movie titles..."} 
+            className="w-full bg-[#1e1e1e] border-none rounded-full py-3 pl-12 pr-4 text-sm focus:ring-1 focus:ring-gold outline-none placeholder:text-gray-500 transition-all duration-300"
           />
+          
+          {/* Rotating Suggestion Label (Idle state) */}
+           {!isFocused && !searchQuery && (
+             <div className="absolute left-12 top-1/2 -translate-y-1/2 pointer-events-none flex items-center gap-2 overflow-hidden w-[calc(100%-4rem)]">
+               <span className="text-gray-500 text-sm whitespace-nowrap">Try:</span>
+               <div className="relative h-5 flex-1">
+                 {suggestions.map((q, idx) => (
+                   <span 
+                     key={q}
+                     className={`absolute inset-0 text-gray-400 text-sm font-medium transition-all duration-700 transform ${
+                       idx === trendingIndex ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+                     }`}
+                   >
+                     {q}
+                   </span>
+                 ))}
+               </div>
+             </div>
+           )}
+
+           {/* Dropdown Suggestions Panel */}
+           {isFocused && (
+             <div className="absolute top-full left-0 right-0 mt-2 bg-[#1e1e1e] rounded-2xl border border-gray-800 shadow-2xl overflow-hidden animate-slide-up z-50">
+               <div className="p-3 border-b border-gray-800/50 flex items-center justify-between">
+                 <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Trending Searches</span>
+                 <TrendingUp size={12} className="text-green-500" />
+               </div>
+               <div className="max-h-[350px] overflow-y-auto no-scrollbar">
+                 {suggestions.map((query, index) => (
+                   <button
+                     key={index}
+                     type="button"
+                     onClick={() => handleSuggestionClick(query)}
+                     className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-white/5 active:bg-white/10 transition-colors border-b border-gray-800/30 last:border-none group text-left"
+                   >
+                     <div className="p-1.5 rounded-lg bg-green-500/10 text-green-500 group-hover:scale-110 transition-transform">
+                       <TrendingUp size={14} />
+                     </div>
+                     <span className="text-sm font-bold text-gray-300 group-hover:text-white transition-colors">{query}</span>
+                   </button>
+                 ))}
+               </div>
+             </div>
+           )}
         </div>
       </div>
 
-      {movies.length === 0 ? (
+      {filteredMovies.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 px-10 text-center opacity-50">
           <Play size={48} className="mb-4 text-gray-600" />
-          <p className="text-sm font-medium">No movies published yet.<br/>Upload content to see it here.</p>
+          <p className="text-sm font-medium">
+            {searchQuery ? `No results for "${searchQuery}"` : "No movies published yet."}<br/>
+            {searchQuery ? "Try searching for something else." : "Upload content to see it here."}
+          </p>
         </div>
       ) : (
         <>
-          <GenreRow title="Action" movies={getMoviesByGenre('Action')} onMovieClick={onMovieClick} />
-          <GenreRow title="Kihindi" movies={getMoviesByGenre('Kihindi')} onMovieClick={onMovieClick} />
-          <GenreRow title="Comedy" movies={getMoviesByGenre('Comedy')} onMovieClick={onMovieClick} />
-          <GenreRow title="Horror" movies={getMoviesByGenre('Horror')} onMovieClick={onMovieClick} />
-          <GenreRow title="Sci-Fi" movies={getMoviesByGenre('Sci-Fi')} onMovieClick={onMovieClick} />
+          {searchQuery ? (
+            <div className="px-4 py-2 flex flex-col gap-6 animate-slide-up">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest">Search Results ({filteredMovies.length})</h2>
+                <button onClick={() => setSearchQuery('')} className="text-[10px] font-black text-gold uppercase tracking-widest">Clear</button>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {filteredMovies.map(movie => (
+                  <MovieCard key={movie.id} movie={movie} onClick={onMovieClick} />
+                ))}
+              </div>
+            </div>
+          ) : (
+            <>
+              <GenreRow title="Action" movies={getMoviesByGenre('Action')} onMovieClick={onMovieClick} />
+              <GenreRow title="Kihindi" movies={getMoviesByGenre('Kihindi')} onMovieClick={onMovieClick} />
+              <GenreRow title="Comedy" movies={getMoviesByGenre('Comedy')} onMovieClick={onMovieClick} />
+              <GenreRow title="Horror" movies={getMoviesByGenre('Horror')} onMovieClick={onMovieClick} />
+              <GenreRow title="Sci-Fi" movies={getMoviesByGenre('Sci-Fi')} onMovieClick={onMovieClick} />
+            </>
+          )}
         </>
       )}
     </div>

@@ -421,6 +421,35 @@ apiRouter.get('/movies/publisher/:name', async (req, res) => {
     }
 });
 
+// Get real search suggestions based on actual content
+apiRouter.get('/suggestions', async (req, res) => {
+    try {
+        // Fetch top movie titles by views
+        const titlesResult = await db.query('SELECT title FROM movies ORDER BY views DESC LIMIT 8');
+        // Fetch unique DJ names
+        const djsResult = await db.query('SELECT DISTINCT dj_name FROM movies LIMIT 5');
+        // Fetch unique genres
+        const genresResult = await db.query('SELECT DISTINCT genre FROM movies LIMIT 5');
+
+        const suggestions = [
+            ...titlesResult.rows.map(r => r.title),
+            ...djsResult.rows.map(r => r.dj_name),
+            ...genresResult.rows.map(r => r.genre)
+        ];
+
+        // Shuffle and take up to 15
+        const shuffled = suggestions
+            .filter((v, i, a) => a.indexOf(v) === i) // Unique
+            .sort(() => Math.random() - 0.5)
+            .slice(0, 15);
+
+        res.json(shuffled);
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] SUGGESTIONS_ERROR:`, error);
+        res.status(500).json({ error: 'Failed to fetch suggestions' });
+    }
+});
+
 // Delete a movie (only by owner)
 apiRouter.delete('/movies/:id', async (req, res) => {
     const { publisher_name } = req.body;
