@@ -619,17 +619,24 @@ const UploadScreen = () => {
 
         {uploading && (
           <div className="flex flex-col gap-2 mt-2">
-            <div className="flex justify-between text-[10px] font-bold text-gold uppercase">
+            <div className="flex justify-between text-[10px] font-black text-gold uppercase tracking-tighter">
               <span>{progress < 100 ? 'Step 1: Uploading to Server...' : 'Step 2: Syncing with Cloud...'}</span>
-              <span>{progress}%</span>
+              <span>{progress < 100 ? `${progress}%` : 'ALMOST READY'}</span>
             </div>
-            <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-              <div className="h-full bg-gold transition-all duration-300" style={{ width: `${progress}%` }}></div>
+            <div className="h-2 bg-gray-800 rounded-full overflow-hidden relative">
+              <div 
+                className={`h-full bg-gold transition-all duration-300 ${progress === 100 ? 'w-full' : ''}`} 
+                style={{ width: progress < 100 ? `${progress}%` : '100%' }}
+              >
+                {progress === 100 && (
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" />
+                )}
+              </div>
             </div>
-            <p className="text-[10px] text-gray-500 italic text-center">
+            <p className="text-[10px] text-gray-500 italic text-center font-medium">
               {progress < 100 
                 ? 'Sending file to our secure server...' 
-                : 'Uplifting to cloud storage. This may take 1-2 minutes. Do not close this page.'}
+                : 'Uplifting to cloud storage. This is the final step, please stay on this page.'}
             </p>
           </div>
         )}
