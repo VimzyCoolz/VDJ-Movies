@@ -24,6 +24,15 @@ CREATE TABLE IF NOT EXISTS movies (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Movie Views table (Unique views tracking)
+CREATE TABLE IF NOT EXISTS movie_views (
+    id SERIAL PRIMARY KEY,
+    movie_id INTEGER REFERENCES movies(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL,
+    viewed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(movie_id, user_id)
+);
+
 -- Reports table
 CREATE TABLE IF NOT EXISTS reports (
     id SERIAL PRIMARY KEY,

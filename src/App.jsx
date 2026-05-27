@@ -7,7 +7,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ?
 
 // --- Components ---
 
-const VideoPlayer = ({ movie, onClose }) => {
+const VideoPlayer = ({ movie, onClose, user }) => {
   const videoRef = useRef(null);
   const playerRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -16,7 +16,70 @@ const VideoPlayer = ({ movie, onClose }) => {
   const [showControls, setShowControls] = useState(true);
   const [isLandscape, setIsLandscape] = useState(false);
   const [zoomMode, setZoomMode] = useState('fit'); // 'fit', 'stretch', 'crop'
+  const [watchedTime, setWatchedTime] = useState(0);
+  const [viewRegistered, setViewRegistered] = useState(false);
   const controlsTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    // Check if already viewed in this session/device to prevent redundant logic
+    const userId = user?.username || localStorage.getItem('vdj_anon_id') || 'anon';
+    const viewedKey = `viewed_${movie.id}_${userId}`;
+    if (localStorage.getItem(viewedKey)) {
+      setViewRegistered(true);
+    }
+  }, [movie.id, user]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    // Accumulator logic: count actual seconds played
+    const interval = setInterval(() => {
+      if (video && !video.paused && !video.seeking && !viewRegistered && duration > 0) {
+        setWatchedTime(prev => {
+          const nextTime = prev + 1;
+          const threshold = duration * 0.375;
+          
+          if (nextTime >= threshold) {
+            registerView();
+            return nextTime;
+          }
+          return nextTime;
+        });
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [duration, viewRegistered]);
+
+  const registerView = async () => {
+    if (viewRegistered) return;
+    
+    // Mark as registered locally first to prevent race conditions
+    setViewRegistered(true);
+    
+    // Get or create a persistent anonymous ID if not logged in
+    let userId = user?.username;
+    if (!userId) {
+      userId = localStorage.getItem('vdj_anon_id');
+      if (!userId) {
+        userId = `anon_${Math.random().toString(36).substr(2, 9)}`;
+        localStorage.setItem('vdj_anon_id', userId);
+      }
+    }
+
+    const viewedKey = `viewed_${movie.id}_${userId}`;
+    localStorage.setItem(viewedKey, 'true');
+
+    try {
+      await axios.post(`${API_BASE_URL}/movies/${movie.id}/view`, {
+        userId: userId
+      });
+      console.log("View registered successfully for threshold 37.5%");
+    } catch (err) {
+      console.error("Failed to register view:", err);
+    }
+  };
 
   useEffect(() => {
     // Request full screen on mount
@@ -969,6 +1032,7 @@ const App = () => {
         <VideoPlayer 
           movie={playingMovie} 
           onClose={() => setPlayingMovie(null)} 
+          user={user}
         />
       )}
     </div>

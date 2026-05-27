@@ -454,6 +454,37 @@ apiRouter.delete('/movies/:id', async (req, res) => {
     }
 });
 
+// Register a unique view
+apiRouter.post('/movies/:id/view', async (req, res) => {
+    const movieId = req.params.id;
+    const { userId } = req.body;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    try {
+        // Use an UPSERT-like approach with INSERT IGNORE (or ON CONFLICT DO NOTHING in PG)
+        // to handle idempotency and duplicate prevention at the DB level
+        const viewResult = await db.query(
+            'INSERT INTO movie_views (movie_id, user_id) VALUES ($1, $2) ON CONFLICT (movie_id, user_id) DO NOTHING RETURNING id',
+            [movieId, userId]
+        );
+
+        // If a row was returned, it means this is a new unique view
+        if (viewResult.rows.length > 0) {
+            await db.query('UPDATE movies SET views = views + 1 WHERE id = $1', [movieId]);
+            console.log(`[${new Date().toISOString()}] NEW_VIEW_REGISTERED: Movie ${movieId} by User ${userId}`);
+            return res.json({ success: true, message: 'View registered' });
+        } else {
+            return res.json({ success: false, message: 'View already registered for this user' });
+        }
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] VIEW_REGISTRATION_ERROR:`, error);
+        res.status(500).json({ error: 'Failed to register view', details: error.message });
+    }
+});
+
 // Publish new movie with direct file upload
 apiRouter.post('/upload', upload.single('movie_file'), async (req, res) => {
     const startTime = Date.now();
