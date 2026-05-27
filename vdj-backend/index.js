@@ -46,6 +46,91 @@ if (typeof BigInt !== 'undefined') {
             return this - BigInt(n);
         };
     }
+    if (!BigInt.prototype.subtract) {
+        BigInt.prototype.subtract = function (n) {
+            return this - BigInt(n);
+        };
+    }
+    if (!BigInt.prototype.minus) {
+        BigInt.prototype.minus = function (n) {
+            return this - BigInt(n);
+        };
+    }
+    if (!BigInt.prototype.plus) {
+        BigInt.prototype.plus = function (n) {
+            return this + BigInt(n);
+        };
+    }
+    if (!BigInt.prototype.multiply) {
+        BigInt.prototype.multiply = function (n) {
+            return this * BigInt(n);
+        };
+    }
+    if (!BigInt.prototype.times) {
+        BigInt.prototype.times = function (n) {
+            return this * BigInt(n);
+        };
+    }
+    if (!BigInt.prototype.remainder) {
+        BigInt.prototype.remainder = function (n) {
+            return this % BigInt(n);
+        };
+    }
+    if (!BigInt.prototype.eq) {
+        BigInt.prototype.eq = function (n) {
+            return this === BigInt(n);
+        };
+    }
+    if (!BigInt.prototype.equals) {
+        BigInt.prototype.equals = function (n) {
+            return this === BigInt(n);
+        };
+    }
+    if (!BigInt.prototype.gt) {
+        BigInt.prototype.gt = function (n) {
+            return this > BigInt(n);
+        };
+    }
+    if (!BigInt.prototype.lt) {
+        BigInt.prototype.lt = function (n) {
+            return this < BigInt(n);
+        };
+    }
+    if (!BigInt.prototype.geq) {
+        BigInt.prototype.geq = function (n) {
+            return this >= BigInt(n);
+        };
+    }
+    if (!BigInt.prototype.leq) {
+        BigInt.prototype.leq = function (n) {
+            return this <= BigInt(n);
+        };
+    }
+    if (!BigInt.prototype.abs) {
+        BigInt.prototype.abs = function () {
+            return this < 0n ? -this : this;
+        };
+    }
+    if (!BigInt.prototype.negate) {
+        BigInt.prototype.negate = function () {
+            return -this;
+        };
+    }
+    if (!BigInt.prototype.isZero) {
+        BigInt.prototype.isZero = function () {
+            return this === 0n;
+        };
+    }
+    if (!BigInt.prototype.isNegative) {
+        BigInt.prototype.isNegative = function () {
+            return this < 0n;
+        };
+    }
+    if (!BigInt.prototype.isPositive) {
+        BigInt.prototype.isPositive = function () {
+            return this > 0n;
+        };
+    }
     if (!BigInt.prototype.neq) {
         BigInt.prototype.neq = function (n) {
             return this !== BigInt(n);
