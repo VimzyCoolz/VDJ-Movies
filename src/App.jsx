@@ -480,9 +480,15 @@ const UploadScreen = () => {
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [cloudProgress, setCloudProgress] = useState(0);
   const [error, setError] = useState(null);
 
   const genres = ['Action', 'Kihindi', 'Comedy', 'Horror', 'Sci-Fi'];
+
+  // Calculate Overall Progress: 50% Step 1, 50% Step 2
+  const overallProgress = progress < 100 
+    ? Math.floor(progress / 2) 
+    : 50 + Math.floor(cloudProgress / 2);
 
   const handleFileChange = (e) => {
      const selectedFile = e.target.files[0];
@@ -512,6 +518,9 @@ const UploadScreen = () => {
 
     setUploading(true);
     setProgress(0);
+    setCloudProgress(0);
+
+    let cloudInterval = null;
 
     try {
       const response = await axios.post(`${API_BASE_URL}/upload`, data, {
@@ -520,10 +529,21 @@ const UploadScreen = () => {
         onUploadProgress: (progressEvent) => {
           const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
           setProgress(percentCompleted);
+
+          if (percentCompleted === 100 && !cloudInterval) {
+            cloudInterval = setInterval(() => {
+              setCloudProgress(prev => {
+                if (prev >= 98) return 98;
+                return prev + 1;
+              });
+            }, 1500); // Slower increments for cloud sync
+          }
         }
       });
 
       if (response.data.success) {
+        if (cloudInterval) clearInterval(cloudInterval);
+        setCloudProgress(100);
         setFormData({ dj_name: '', title: '', summary: '', genre: 'Action' });
         setFile(null);
         setProgress(0);
@@ -595,7 +615,13 @@ const UploadScreen = () => {
 
         <div className="flex flex-col gap-2">
           <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Movie File (Direct Uplift)</label>
-          <div className="relative">
+          <div className="relative group">
+            {uploading && (
+              <div 
+                className="absolute -inset-1 rounded-2xl border-2 border-green-500/50 animate-pulse pointer-events-none z-10"
+                style={{ opacity: Math.max(0.3, overallProgress / 100) }}
+              />
+            )}
             <input 
               type="file" 
               accept="video/*"
@@ -606,12 +632,19 @@ const UploadScreen = () => {
             />
             <label 
               htmlFor="file-upload" 
-              className={`flex items-center justify-center gap-2 p-4 rounded-xl border-2 border-dashed transition-colors cursor-pointer ${file ? 'border-gold bg-gold/5 text-gold' : 'border-gray-700 hover:border-gray-500 text-gray-500'} ${error ? 'border-red-500 bg-red-500/5 text-red-500' : ''}`}
+              className={`relative flex items-center justify-center gap-2 p-4 rounded-xl border-2 border-dashed transition-colors cursor-pointer ${file ? 'border-gold bg-gold/5 text-gold' : 'border-gray-700 hover:border-gray-500 text-gray-500'} ${error ? 'border-red-500 bg-red-500/5 text-red-500' : ''}`}
             >
               {file ? <CheckCircle2 size={20} /> : <Upload size={20} />}
               <span className="text-sm font-bold truncate max-w-[200px]">
                 {file ? file.name : (error ? 'File too large' : 'Select movie file from device')}
               </span>
+              
+              {uploading && (
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col items-end">
+                  <span className="text-green-500 font-black text-sm leading-none">{overallProgress}%</span>
+                  <span className="text-[7px] text-green-500 font-black uppercase tracking-tighter">OVERALL</span>
+                </div>
+              )}
             </label>
           </div>
           {error && <p className="text-[10px] text-red-500 font-bold mt-1">{error}</p>}
@@ -620,12 +653,12 @@ const UploadScreen = () => {
         {uploading && (
           <div className="flex flex-col gap-2 mt-2">
             <div className="flex justify-between text-[10px] font-black text-gold uppercase tracking-tighter">
-              <span>{progress < 100 ? 'Step 1: Uploading to Server...' : 'Step 2: Syncing with Cloud...'}</span>
-              <span>{progress < 100 ? `${progress}%` : 'ALMOST READY'}</span>
+              <span>{progress < 100 ? `Step 1: Uplink (${progress}%)` : `Step 2: Syncing (${cloudProgress}%)`}</span>
+              <span className="text-green-500">{overallProgress}% TOTAL</span>
             </div>
             <div className="h-2 bg-gray-800 rounded-full overflow-hidden relative">
               <div 
-                className={`h-full bg-gold transition-all duration-300 ${progress === 100 ? 'w-full' : ''}`} 
+                className="h-full bg-gold transition-all duration-300" 
                 style={{ width: progress < 100 ? `${progress}%` : '100%' }}
               >
                 {progress === 100 && (
@@ -635,8 +668,8 @@ const UploadScreen = () => {
             </div>
             <p className="text-[10px] text-gray-500 italic text-center font-medium">
               {progress < 100 
-                ? 'Sending file to our secure server...' 
-                : 'Uplifting to cloud storage. This is the final step, please stay on this page.'}
+                ? 'Step 1 of 2: Sending file to our secure server...' 
+                : 'Step 2 of 2: Almost ready! Finalizing cloud storage sync...'}
             </p>
           </div>
         )}
