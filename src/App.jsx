@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Library, Upload, User, Search, Play, X, CheckCircle2, DownloadCloud, ChevronRight, AlertTriangle, Settings, Pause, Maximize, Minimize, Trash2 } from 'lucide-react';
+import { Home, Library, Upload, User, Search, Play, X, CheckCircle2, DownloadCloud, ChevronRight, AlertTriangle, Settings, Pause, Maximize, Minimize, Trash2, Image as ImageIcon } from 'lucide-react';
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5000/api' : '/api');
@@ -277,7 +277,7 @@ const MovieBottomSheet = ({ movie, isOpen, onClose, onPlay }) => {
         {/* Banner */}
         <div className="relative w-full aspect-video">
           <img 
-            src={movie.thumbnail || `https://picsum.photos/seed/${movie.id}/600/340`} 
+            src={movie.thumbnail_url || movie.thumbnail || `https://picsum.photos/seed/${movie.id}/600/340`} 
             alt={movie.title}
             className="w-full h-full object-cover"
           />
@@ -383,9 +383,9 @@ const MovieCard = ({ movie, onClick }) => (
     onClick={() => onClick(movie)}
   >
     <img 
-      src={movie.thumbnail || `https://picsum.photos/seed/${movie.id}/300/450`} 
+      src={movie.thumbnail_url || movie.thumbnail || `https://picsum.photos/seed/${movie.id}/300/450`} 
       alt={movie.title}
-      className="w-full h-full object-cover"
+      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
     />
     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
       <Play fill="white" size={32} />
@@ -546,10 +546,17 @@ const UploadScreen = ({ user }) => {
     genre: 'Action'
   });
   const [file, setFile] = useState(null);
+  const [coverImage, setCoverImage] = useState(null);
+  const [coverPreview, setCoverPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [cloudProgress, setCloudProgress] = useState(0);
   const [error, setError] = useState(null);
+  const [coverMode, setCoverMode] = useState('upload'); // 'upload' or 'frame'
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const [videoUrl, setVideoUrl] = useState(null);
+  const [currentTime, setCurrentTime] = useState(0);
 
   const genres = ['Action', 'Kihindi', 'Comedy', 'Horror', 'Sci-Fi'];
 
@@ -561,16 +568,46 @@ const UploadScreen = ({ user }) => {
   const handleFileChange = (e) => {
      const selectedFile = e.target.files[0];
      if (selectedFile) {
-       // Files are now hosted on Render, which supports larger uploads
        if (selectedFile.size > 2000 * 1024 * 1024) {
          setError("File is too large (Max 2GB). Please compress the movie or use a smaller file.");
          setFile(null);
+         setVideoUrl(null);
        } else {
          setError(null);
          setFile(selectedFile);
+         setVideoUrl(URL.createObjectURL(selectedFile));
        }
      }
    };
+
+  const handleCoverChange = (e) => {
+    const selectedCover = e.target.files[0];
+    if (selectedCover) {
+      if (selectedCover.size > 5 * 1024 * 1024) {
+        setError("Cover image too large (Max 5MB).");
+      } else {
+        setCoverImage(selectedCover);
+        setCoverPreview(URL.createObjectURL(selectedCover));
+      }
+    }
+  };
+
+  const captureFrame = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      canvas.toBlob((blob) => {
+        const frameFile = new File([blob], "cover_frame.jpg", { type: "image/jpeg" });
+        setCoverImage(frameFile);
+        setCoverPreview(URL.createObjectURL(frameFile));
+      }, 'image/jpeg', 0.95);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -588,6 +625,9 @@ const UploadScreen = ({ user }) => {
     data.append('summary', formData.summary);
     data.append('genre', formData.genre);
     data.append('movie_file', file);
+    if (coverImage) {
+      data.append('cover_image', coverImage);
+    }
     data.append('publisher_name', user.username);
 
     setUploading(true);
@@ -599,7 +639,7 @@ const UploadScreen = ({ user }) => {
     try {
       const response = await axios.post(`${API_BASE_URL}/upload`, data, {
         headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 600000, // 10 minute timeout for large movie uploads (increased from 5m)
+        timeout: 600000, 
         onUploadProgress: (progressEvent) => {
           const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
           setProgress(percentCompleted);
@@ -610,7 +650,7 @@ const UploadScreen = ({ user }) => {
                 if (prev >= 98) return 98;
                 return prev + 1;
               });
-            }, 1500); // Slower increments for cloud sync
+            }, 1500); 
           }
         }
       });
@@ -620,14 +660,17 @@ const UploadScreen = ({ user }) => {
         setCloudProgress(100);
         setFormData({ dj_name: '', title: '', summary: '', genre: 'Action' });
         setFile(null);
+        setCoverImage(null);
+        setCoverPreview(null);
+        setVideoUrl(null);
         setProgress(0);
-        // Navigate to home or show a subtle success state instead of alert
         window.location.href = '/'; 
       }
     } catch (error) {
       console.error('Upload failed:', error);
       setUploading(false);
       setProgress(0);
+      setError(error.response?.data?.details || "Upload failed. Please try again.");
     } finally {
       setUploading(false);
     }
@@ -721,7 +764,82 @@ const UploadScreen = ({ user }) => {
               )}
             </label>
           </div>
-          {error && <p className="text-[10px] text-red-500 font-bold mt-1">{error}</p>}
+        </div>
+
+        {/* Custom Video Cover Section */}
+        <div className="flex flex-col gap-3 p-4 bg-[#1e1e1e] rounded-2xl border border-gray-800">
+          <div className="flex justify-between items-center">
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Video Cover / Thumbnail</label>
+            <div className="flex bg-black/40 rounded-lg p-1">
+              <button 
+                type="button"
+                onClick={() => setCoverMode('upload')}
+                className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${coverMode === 'upload' ? 'bg-gold text-black' : 'text-gray-500'}`}
+              >UPLOAD</button>
+              <button 
+                type="button"
+                onClick={() => setCoverMode('frame')}
+                disabled={!file}
+                className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${coverMode === 'frame' ? 'bg-gold text-black' : 'text-gray-500 disabled:opacity-30'}`}
+              >SELECT FRAME</button>
+            </div>
+          </div>
+
+          <div className="flex gap-4 items-start">
+            <div className="w-32 aspect-video bg-black rounded-lg overflow-hidden border border-gray-800 flex items-center justify-center relative">
+              {coverPreview ? (
+                <img src={coverPreview} className="w-full h-full object-cover" alt="Cover Preview" />
+              ) : (
+                <ImageIcon className="text-gray-700" size={24} />
+              )}
+            </div>
+            
+            <div className="flex-1 flex flex-col gap-2">
+              {coverMode === 'upload' ? (
+                <>
+                  <p className="text-[10px] text-gray-500">Upload a custom high-quality JPG/PNG cover image (Max 5MB).</p>
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    className="hidden" 
+                    id="cover-upload" 
+                    onChange={handleCoverChange}
+                    disabled={uploading}
+                  />
+                  <label 
+                    htmlFor="cover-upload"
+                    className="bg-[#252525] text-gray-300 text-xs font-bold py-2 px-4 rounded-lg cursor-pointer hover:bg-[#333] transition-all text-center"
+                  >
+                    CHOOSE IMAGE
+                  </label>
+                </>
+              ) : (
+                <>
+                  <p className="text-[10px] text-gray-500">Seek through the video and capture the perfect frame.</p>
+                  <button 
+                    type="button"
+                    onClick={captureFrame}
+                    className="bg-gold/10 text-gold text-xs font-bold py-2 px-4 rounded-lg hover:bg-gold/20 transition-all text-center border border-gold/20"
+                  >
+                    CAPTURE CURRENT FRAME
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {coverMode === 'frame' && videoUrl && (
+            <div className="mt-2 flex flex-col gap-2">
+              <video 
+                ref={videoRef}
+                src={videoUrl}
+                className="w-full rounded-xl border border-gray-800 bg-black max-h-[200px]"
+                controls
+                onTimeUpdate={(e) => setCurrentTime(e.target.currentTime)}
+              />
+              <canvas ref={canvasRef} className="hidden" />
+            </div>
+          )}
         </div>
 
         {uploading && (
@@ -742,16 +860,18 @@ const UploadScreen = ({ user }) => {
             </div>
             <p className="text-[10px] text-gray-500 italic text-center font-medium">
               {progress < 100 
-                ? 'Step 1 of 2: Sending file to our secure server...' 
+                ? 'Step 1 of 2: Sending files to our secure server...' 
                 : 'Step 2 of 2: Almost ready! Finalizing cloud storage sync...'}
             </p>
           </div>
         )}
 
+        {error && <p className="text-xs text-red-500 font-bold bg-red-500/10 p-3 rounded-lg border border-red-500/20">{error}</p>}
+
         <button 
           type="submit"
           className={`bg-gold text-black font-black py-4 rounded-xl mt-4 shadow-lg shadow-gold/20 active:scale-95 transition-all ${uploading ? 'opacity-50 cursor-not-allowed' : 'hover:scale-[1.02]'}`}
-          disabled={uploading}
+          disabled={uploading || !file}
         >
           {uploading ? 'UPLIFTING...' : 'PUBLISH MOVIE'}
         </button>
@@ -900,7 +1020,7 @@ const ProfileScreen = ({ user, onMovieClick }) => {
 
                       <div className="aspect-[4/5] rounded-[1.5rem] overflow-hidden relative border border-white/5 shadow-xl bg-gray-900">
                       <img 
-                        src={movie.thumbnail || `https://picsum.photos/seed/${movie.id}/400/500`} 
+                        src={movie.thumbnail_url || movie.thumbnail || `https://picsum.photos/seed/${movie.id}/400/500`} 
                         className="w-full h-full object-cover grayscale-[0.2] group-hover:grayscale-0 transition-all duration-500" 
                         alt={movie.title} 
                       />

@@ -485,15 +485,19 @@ apiRouter.post('/movies/:id/view', async (req, res) => {
     }
 });
 
-// Publish new movie with direct file upload
-apiRouter.post('/upload', upload.single('movie_file'), async (req, res) => {
+// Publish new movie with direct file upload and optional custom cover
+apiRouter.post('/upload', upload.fields([
+    { name: 'movie_file', maxCount: 1 },
+    { name: 'cover_image', maxCount: 1 }
+]), async (req, res) => {
     const startTime = Date.now();
     const { dj_name, title, summary, genre, publisher_name } = req.body;
-    const file = req.file;
+    const movieFile = req.files['movie_file'] ? req.files['movie_file'][0] : null;
+    const coverFile = req.files['cover_image'] ? req.files['cover_image'][0] : null;
     
-    if (!file || !dj_name || !title) {
-        console.error(`[${new Date().toISOString()}] UPLOAD_FAILED: Missing fields. DJ: ${dj_name}, Title: ${title}, File: ${!!file}`);
-        return res.status(400).json({ error: 'Missing required fields or file' });
+    if (!movieFile || !dj_name || !title) {
+        console.error(`[${new Date().toISOString()}] UPLOAD_FAILED: Missing fields. DJ: ${dj_name}, Title: ${title}, File: ${!!movieFile}`);
+        return res.status(400).json({ error: 'Missing required fields or movie file' });
     }
 
     if (!channelId) {
@@ -501,38 +505,64 @@ apiRouter.post('/upload', upload.single('movie_file'), async (req, res) => {
         return res.status(500).json({ error: 'Server configuration error: Missing storage ID' });
     }
 
-    console.log(`[${new Date().toISOString()}] UPLOAD_STARTED: ${title} (${(file.size / (1024 * 1024)).toFixed(2)} MB) by ${dj_name} (Publisher: ${publisher_name || 'Anonymous'})`);
+    console.log(`[${new Date().toISOString()}] UPLOAD_STARTED: ${title} (${(movieFile.size / (1024 * 1024)).toFixed(2)} MB) by ${dj_name} (Publisher: ${publisher_name || 'Anonymous'})`);
 
     try {
-        console.log(`[${new Date().toISOString()}] UPLOAD_TO_CLOUD_STARTED: ${title}`);
-        
         // Ensure client is connected before sending
         const activeClient = await ensureConnected();
-        
-        // Resolve channel entity
         const entity = await getChannelEntity(activeClient);
         
-        // Check if file still exists before sending
-        if (!fs.existsSync(file.path)) {
-            throw new Error(`Temporary file lost before cloud upload: ${file.path}`);
+        let thumbnail_url = null;
+
+        // 1. Process Cover Image if provided
+        if (coverFile) {
+            console.log(`[${new Date().toISOString()}] COVER_UPLOAD_INIT: ${coverFile.originalname}`);
+            
+            // Validate cover image (size < 5MB, common formats)
+            const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+            if (!allowedTypes.includes(coverFile.mimetype)) {
+                throw new Error('Invalid cover image format. Use JPG, PNG or WebP.');
+            }
+            if (coverFile.size > 5 * 1024 * 1024) {
+                throw new Error('Cover image too large. Max 5MB allowed.');
+            }
+
+            const uploadedCover = await activeClient.sendFile(entity, {
+                file: coverFile.path,
+                caption: `🖼️ **Cover for ${title}**`,
+                forceDocument: false
+            });
+            
+            thumbnail_url = `https://cloud-storage.vdj-movies.com/c/${channelId.replace('-100', '')}/${uploadedCover.id}`;
+            console.log(`[${new Date().toISOString()}] COVER_UPLOAD_SUCCESS: ${thumbnail_url}`);
+            
+            // Clean up cover temp file
+            fs.unlink(coverFile.path, () => {});
         }
 
-        const fileStats = fs.statSync(file.path);
-        console.log(`[${new Date().toISOString()}] FILE_VERIFIED: ${file.path} (${(fileStats.size / (1024 * 1024)).toFixed(2)} MB)`);
+        // 2. Process Movie File
+        console.log(`[${new Date().toISOString()}] UPLOAD_TO_CLOUD_STARTED: ${title}`);
+        
+        // Check if file still exists before sending
+        if (!fs.existsSync(movieFile.path)) {
+            throw new Error(`Temporary file lost before cloud upload: ${movieFile.path}`);
+        }
+
+        const fileStats = fs.statSync(movieFile.path);
+        console.log(`[${new Date().toISOString()}] FILE_VERIFIED: ${movieFile.path} (${(fileStats.size / (1024 * 1024)).toFixed(2)} MB)`);
 
         // Upload to storage with optimized parameters
         console.log(`[${new Date().toISOString()}] CLOUD_UPLOAD_INIT: ${title} - Using 4 workers, 512KB chunks`);
         
         const uploadedFile = await activeClient.sendFile(entity, {
-            file: file.path, // Read directly from disk
+            file: movieFile.path, // Read directly from disk
             caption: `🎬 **${title}**\n🎙️ Narrated by: ${dj_name}\n👤 Published by: ${publisher_name || 'Anonymous'}\n\n${summary}\n\n#${genre}`,
             parseMode: 'markdown',
-            workers: 4, // Reduced from 8 for better stability on smaller instances
-            maxChunkSize: 512 * 1024, // Reduced from 1MB to 512KB for better reliability
-            forceDocument: false, // Allow Telegram to treat it as a video if possible
+            workers: 4, 
+            maxChunkSize: 512 * 1024, 
+            forceDocument: false, 
             progressCallback: (progress) => {
                 const percent = (progress * 100).toFixed(2);
-                // Log every 5% for better visibility without flooding
                 if (Math.floor(percent * 20) % 100 === 0 || percent === "100.00") { 
                     console.log(`[${new Date().toISOString()}] CLOUD_UPLOAD_PROGRESS: ${title} - ${percent}%`);
                 }
@@ -546,7 +576,7 @@ apiRouter.post('/upload', upload.single('movie_file'), async (req, res) => {
         const storage_link = `https://cloud-storage.vdj-movies.com/c/${channelId.replace('-100', '')}/${uploadedFile.id}`;
         
         // Calculate human readable size
-        const sizeInBytes = file.size;
+        const sizeInBytes = movieFile.size;
         let sizeFormatted = '0 MB';
         if (sizeInBytes >= 1024 * 1024 * 1024) {
             sizeFormatted = `${(sizeInBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
@@ -555,38 +585,33 @@ apiRouter.post('/upload', upload.single('movie_file'), async (req, res) => {
         }
 
         const result = await db.query(
-            'INSERT INTO movies (dj_name, title, summary, genre, telegram_link, telegram_message_id, publisher_name, size) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
-            [dj_name, title, summary, genre, storage_link, uploadedFile.id, publisher_name || 'Anonymous', sizeFormatted]
+            'INSERT INTO movies (dj_name, title, summary, genre, telegram_link, telegram_message_id, publisher_name, size, thumbnail_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
+            [dj_name, title, summary, genre, storage_link, uploadedFile.id, publisher_name || 'Anonymous', sizeFormatted, thumbnail_url]
         );
         
         const totalDuration = ((Date.now() - startTime) / 1000).toFixed(2);
         console.log(`[${new Date().toISOString()}] TRANSACTION_COMPLETE: ${title} published in ${totalDuration}s total.`);
         
-        // Clean up: Delete temp file
-        fs.unlink(file.path, (err) => {
-            if (err) console.error(`[${new Date().toISOString()}] CLEANUP_ERROR: Failed to delete temp file: ${file.path}`, err);
+        // Clean up: Delete movie temp file
+        fs.unlink(movieFile.path, (err) => {
+            if (err) console.error(`[${new Date().toISOString()}] CLEANUP_ERROR: Failed to delete temp file: ${movieFile.path}`, err);
         });
 
         res.json({ success: true, movie: result.rows[0] });
     } catch (error) {
         console.error(`[${new Date().toISOString()}] UPLOAD_CRITICAL_ERROR:`, error);
         
-        // Clean up: Delete temp file even on error
-        if (file && file.path) {
-            try {
-                if (fs.existsSync(file.path)) {
-                    fs.unlinkSync(file.path);
-                }
-            } catch (unlinkErr) {
-                console.error(`[${new Date().toISOString()}] CLEANUP_ERROR:`, unlinkErr);
+        // Clean up: Delete temp files even on error
+        [movieFile, coverFile].forEach(f => {
+            if (f && f.path && fs.existsSync(f.path)) {
+                try { fs.unlinkSync(f.path); } catch (e) {}
             }
-        }
+        });
         
         const errorMessage = error.message || 'Unknown error during upload';
         res.status(500).json({ 
             error: 'Failed to process movie uplift', 
             details: errorMessage,
-            timestamp: new Date().toISOString()
         });
     }
 });
