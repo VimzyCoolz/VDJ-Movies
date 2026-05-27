@@ -421,6 +421,39 @@ apiRouter.get('/movies/publisher/:name', async (req, res) => {
     }
 });
 
+// Delete a movie (only by owner)
+apiRouter.delete('/movies/:id', async (req, res) => {
+    const { publisher_name } = req.body;
+    const movieId = req.params.id;
+
+    if (!publisher_name) {
+        return res.status(401).json({ error: 'Unauthorized: Publisher name required' });
+    }
+
+    try {
+        // First, check if the movie belongs to the publisher
+        const checkResult = await db.query('SELECT * FROM movies WHERE id = $1', [movieId]);
+        
+        if (checkResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Movie not found' });
+        }
+
+        const movie = checkResult.rows[0];
+        if (movie.publisher_name !== publisher_name) {
+            return res.status(403).json({ error: 'Forbidden: You do not own this movie' });
+        }
+
+        // Delete from database
+        await db.query('DELETE FROM movies WHERE id = $1', [movieId]);
+        
+        console.log(`[${new Date().toISOString()}] MOVIE_DELETED: ID ${movieId} by ${publisher_name}`);
+        res.json({ success: true, message: 'Movie deleted successfully' });
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] DELETE_ERROR:`, error);
+        res.status(500).json({ error: 'Failed to delete movie', details: error.message });
+    }
+});
+
 // Publish new movie with direct file upload
 apiRouter.post('/upload', upload.single('movie_file'), async (req, res) => {
     const startTime = Date.now();

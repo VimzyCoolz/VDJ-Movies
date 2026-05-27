@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Library, Upload, User, Search, Play, X, CheckCircle2, DownloadCloud, ChevronRight, AlertTriangle, Settings, Pause, Maximize, Minimize } from 'lucide-react';
+import { Home, Library, Upload, User, Search, Play, X, CheckCircle2, DownloadCloud, ChevronRight, AlertTriangle, Settings, Pause, Maximize, Minimize, Trash2 } from 'lucide-react';
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5000/api' : '/api');
@@ -700,6 +700,7 @@ const UploadScreen = ({ user }) => {
 const ProfileScreen = ({ user, onMovieClick }) => {
   const [userMovies, setUserMovies] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
 
   useEffect(() => {
     // Only mount CoolzTech Shared UI if user is NOT logged in
@@ -711,22 +712,44 @@ const ProfileScreen = ({ user, onMovieClick }) => {
     }
   }, [user]);
 
-  useEffect(() => {
-    if (user) {
-      const fetchUserMovies = async () => {
-        setLoading(true);
-        try {
-          const response = await axios.get(`${API_BASE_URL}/movies/publisher/${user.username}`);
-          setUserMovies(Array.isArray(response.data) ? response.data : []);
-        } catch (err) {
-          console.error("Failed to fetch user movies:", err);
-        } finally {
-          setLoading(false);
-        }
-      };
-      fetchUserMovies();
+  const fetchUserMovies = async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const response = await axios.get(`${API_BASE_URL}/movies/publisher/${user.username}`);
+      setUserMovies(Array.isArray(response.data) ? response.data : []);
+    } catch (err) {
+      console.error("Failed to fetch user movies:", err);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    fetchUserMovies();
   }, [user]);
+
+  const handleDelete = async (e, movieId) => {
+    e.stopPropagation(); // Prevent opening the movie sheet
+    
+    if (!window.confirm("Are you sure you want to delete this movie? This action cannot be undone.")) {
+      return;
+    }
+
+    setDeletingId(movieId);
+    try {
+      await axios.delete(`${API_BASE_URL}/movies/${movieId}`, {
+        data: { publisher_name: user.username }
+      });
+      // Refresh list
+      fetchUserMovies();
+    } catch (err) {
+      console.error("Failed to delete movie:", err);
+      alert("Error deleting movie: " + (err.response?.data?.error || err.message));
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const totalViews = userMovies.reduce((acc, movie) => acc + (movie.views || 0), 0);
 
@@ -795,11 +818,24 @@ const ProfileScreen = ({ user, onMovieClick }) => {
               <div className="grid grid-cols-2 gap-x-4 gap-y-6">
                 {userMovies.map(movie => (
                   <div 
-                    key={movie.id} 
-                    className="flex flex-col gap-3 group active:scale-95 transition-transform"
-                    onClick={() => onMovieClick(movie)}
-                  >
-                    <div className="aspect-[4/5] rounded-[1.5rem] overflow-hidden relative border border-white/5 shadow-xl bg-gray-900">
+                      key={movie.id} 
+                      className="flex flex-col gap-3 group active:scale-95 transition-transform relative"
+                      onClick={() => onMovieClick(movie)}
+                    >
+                      {/* Delete Button Overlay */}
+                      <button 
+                        onClick={(e) => handleDelete(e, movie.id)}
+                        disabled={deletingId === movie.id}
+                        className="absolute top-2 right-2 z-20 p-2 bg-red-600/90 text-white rounded-xl shadow-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-red-700 active:scale-90"
+                      >
+                        {deletingId === movie.id ? (
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        ) : (
+                          <Trash2 size={16} />
+                        )}
+                      </button>
+
+                      <div className="aspect-[4/5] rounded-[1.5rem] overflow-hidden relative border border-white/5 shadow-xl bg-gray-900">
                       <img 
                         src={movie.thumbnail || `https://picsum.photos/seed/${movie.id}/400/500`} 
                         className="w-full h-full object-cover grayscale-[0.2] group-hover:grayscale-0 transition-all duration-500" 
