@@ -124,11 +124,6 @@ ensureConnected().catch(err => console.error("Initial cloud connection failed:",
 app.use(cors());
 app.use(morgan(':method :url :status :res[content-length] - :response-time ms'));
 
-// Root health check for Render
-app.get('/', (req, res) => {
-    res.status(200).send('VDJ Movies Backend is Live');
-});
-
 // Increase payload limits for large movie metadata and uploads
 app.use(express.json({ limit: '500mb' }));
 app.use(express.urlencoded({ limit: '500mb', extended: true }));
