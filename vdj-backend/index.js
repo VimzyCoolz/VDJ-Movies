@@ -15,7 +15,35 @@ import os from 'os';
 if (typeof BigInt !== 'undefined') {
     if (!BigInt.prototype.mod) {
         BigInt.prototype.mod = function (n) {
-            return this % BigInt(n);
+            const res = this % BigInt(n);
+            // Return an object that mimics the expected BigInt extension if necessary
+            return res;
+        };
+    }
+    if (!BigInt.prototype.toJSNumber) {
+        BigInt.prototype.toJSNumber = function () {
+            return Number(this);
+        };
+    }
+    // Add other missing methods that GramJS might expect on the result of mod()
+    if (!BigInt.prototype.div) {
+        BigInt.prototype.div = function (n) {
+            return this / BigInt(n);
+        };
+    }
+    if (!BigInt.prototype.mul) {
+        BigInt.prototype.mul = function (n) {
+            return this * BigInt(n);
+        };
+    }
+    if (!BigInt.prototype.add) {
+        BigInt.prototype.add = function (n) {
+            return this + BigInt(n);
+        };
+    }
+    if (!BigInt.prototype.sub) {
+        BigInt.prototype.sub = function (n) {
+            return this - BigInt(n);
         };
     }
     if (!BigInt.prototype.neq) {
