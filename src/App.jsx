@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Library, Upload, User, Search, Play, X, CheckCircle2, DownloadCloud, ChevronRight, AlertTriangle, Settings, Pause, Maximize, Minimize, Trash2, Image as ImageIcon, TrendingUp } from 'lucide-react';
+import { Home, Library, Upload, User, Search, Play, X, CheckCircle2, DownloadCloud, ChevronRight, AlertTriangle, Settings, Pause, Maximize, Minimize, Trash2, Image as ImageIcon, TrendingUp, Menu } from 'lucide-react';
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5000/api' : '/api');
@@ -396,29 +396,64 @@ const MovieBottomSheet = ({ movie, isOpen, onClose, onPlay }) => {
   );
 };
 
-const BottomNav = () => {
+const Navigation = ({ isDesktopOpen, setIsDesktopOpen }) => {
   const location = useLocation();
   const isActive = (path) => location.pathname === path;
 
-  return (
-    <nav className="fixed bottom-0 left-0 right-0 h-16 bg-black border-t border-gray-800 flex items-center justify-around px-4 z-50">
-      <Link to="/" className={`flex flex-col items-center gap-1 ${isActive('/') ? 'text-gold' : 'text-gray-500'}`}>
+  const NavLinks = () => (
+    <>
+      <Link to="/" onClick={() => setIsDesktopOpen(false)} className={`flex flex-col md:flex-row items-center gap-1 md:gap-4 md:px-6 md:py-4 md:w-full md:hover:bg-white/5 transition-all ${isActive('/') ? 'text-gold' : 'text-gray-500'}`}>
         <Home size={24} />
-        <span className="text-[10px] font-medium">Home</span>
+        <span className="text-[10px] md:text-sm font-black md:uppercase md:tracking-widest">Home</span>
       </Link>
-      <Link to="/library" className={`flex flex-col items-center gap-1 ${isActive('/library') ? 'text-gold' : 'text-gray-500'}`}>
+      <Link to="/library" onClick={() => setIsDesktopOpen(false)} className={`flex flex-col md:flex-row items-center gap-1 md:gap-4 md:px-6 md:py-4 md:w-full md:hover:bg-white/5 transition-all ${isActive('/library') ? 'text-gold' : 'text-gray-500'}`}>
         <Library size={24} />
-        <span className="text-[10px] font-medium">Library</span>
+        <span className="text-[10px] md:text-sm font-black md:uppercase md:tracking-widest">Library</span>
       </Link>
-      <Link to="/upload" className={`flex flex-col items-center gap-1 ${isActive('/upload') ? 'text-gold' : 'text-gray-500'}`}>
+      <Link to="/upload" onClick={() => setIsDesktopOpen(false)} className={`flex flex-col md:flex-row items-center gap-1 md:gap-4 md:px-6 md:py-4 md:w-full md:hover:bg-white/5 transition-all ${isActive('/upload') ? 'text-gold' : 'text-gray-500'}`}>
         <Upload size={24} />
-        <span className="text-[10px] font-medium">Upload</span>
+        <span className="text-[10px] md:text-sm font-black md:uppercase md:tracking-widest">Upload</span>
       </Link>
-      <Link to="/profile" className={`flex flex-col items-center gap-1 ${isActive('/profile') ? 'text-gold' : 'text-gray-500'}`}>
+      <Link to="/profile" onClick={() => setIsDesktopOpen(false)} className={`flex flex-col md:flex-row items-center gap-1 md:gap-4 md:px-6 md:py-4 md:w-full md:hover:bg-white/5 transition-all ${isActive('/profile') ? 'text-gold' : 'text-gray-500'}`}>
         <User size={24} />
-        <span className="text-[10px] font-medium">Profile</span>
+        <span className="text-[10px] md:text-sm font-black md:uppercase md:tracking-widest">Profile</span>
       </Link>
-    </nav>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile Navigation - Horizontal Bottom Bar (Unchanged) */}
+      <nav className="fixed bottom-0 left-0 right-0 h-16 bg-black border-t border-gray-800 flex items-center justify-around px-4 z-50 md:hidden">
+        <NavLinks />
+      </nav>
+
+      {/* Desktop Navigation - Vertical Side Bar */}
+      <aside 
+        className={`fixed top-0 left-0 bottom-0 w-72 bg-[#0a0a0a] border-r border-white/5 z-[60] transform transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] hidden md:flex flex-col pt-24 shadow-2xl ${
+          isDesktopOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <div className="px-6 mb-8">
+          <img src="/images/VDJ LOGO.png" alt="VDJ Logo" className="h-12 w-auto" />
+        </div>
+        <div className="flex flex-col gap-2">
+          <NavLinks />
+        </div>
+        
+        <div className="mt-auto p-6 border-t border-white/5">
+          <p className="text-[10px] font-black text-gray-600 uppercase tracking-[0.2em]">© 2026 VDJ MOVIES</p>
+        </div>
+      </aside>
+      
+      {/* Desktop Overlay for no-shift slide-out */}
+      {isDesktopOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[55] hidden md:block animate-in fade-in duration-500" 
+          onClick={() => setIsDesktopOpen(false)}
+        />
+      )}
+    </>
   );
 };
 
@@ -1331,6 +1366,7 @@ const App = () => {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [playingMovie, setPlayingMovie] = useState(null);
   const [user, setUser] = useState(null);
+  const [isSideNavOpen, setIsSideNavOpen] = useState(false);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -1368,7 +1404,15 @@ const App = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col max-w-md mx-auto shadow-2xl relative bg-[#0f0f0f]">
+    <div className="min-h-screen flex flex-col md:flex-row max-w-md md:max-w-none mx-auto shadow-2xl relative bg-[#0f0f0f]">
+      {/* Desktop Hamburger Menu */}
+      <button 
+        onClick={() => setIsSideNavOpen(!isSideNavOpen)}
+        className="fixed top-6 left-6 z-[70] p-3 bg-black/50 backdrop-blur-md rounded-2xl text-white border border-white/10 hidden md:flex items-center justify-center hover:bg-gold hover:text-black transition-all active:scale-90"
+      >
+        {isSideNavOpen ? <X size={24} /> : <Menu size={24} />}
+      </button>
+
       <main className="flex-1 overflow-y-auto">
         <Routes>
           <Route path="/" element={<HomeScreen onMovieClick={handleMovieClick} />} />
@@ -1377,7 +1421,8 @@ const App = () => {
           <Route path="/profile" element={<ProfileScreen user={user} onMovieClick={handleMovieClick} />} />
         </Routes>
       </main>
-      <BottomNav />
+      
+      <Navigation isDesktopOpen={isSideNavOpen} setIsDesktopOpen={setIsSideNavOpen} />
 
       {/* Overlays */}
       <MovieBottomSheet 
