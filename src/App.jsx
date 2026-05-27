@@ -9,14 +9,33 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ?
 
 const VideoPlayer = ({ movie, onClose }) => {
   const videoRef = useRef(null);
+  const playerRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showControls, setShowControls] = useState(true);
   const [isLandscape, setIsLandscape] = useState(false);
+  const [zoomMode, setZoomMode] = useState('fit'); // 'fit', 'stretch', 'crop'
   const controlsTimeoutRef = useRef(null);
 
   useEffect(() => {
+    // Request full screen on mount
+    const enterFullscreen = async () => {
+      try {
+        if (playerRef.current?.requestFullscreen) {
+          await playerRef.current.requestFullscreen();
+        } else if (playerRef.current?.webkitRequestFullscreen) {
+          await playerRef.current.webkitRequestFullscreen();
+        } else if (playerRef.current?.msRequestFullscreen) {
+          await playerRef.current.msRequestFullscreen();
+        }
+      } catch (err) {
+        console.warn("Fullscreen request failed:", err);
+      }
+    };
+
+    enterFullscreen();
+
     // Attempt to lock to landscape if supported
     if (window.screen?.orientation?.lock) {
       window.screen.orientation.lock('landscape').catch(() => {});
@@ -33,6 +52,10 @@ const VideoPlayer = ({ movie, onClose }) => {
       window.removeEventListener('resize', handleOrientationChange);
       if (window.screen?.orientation?.unlock) {
         window.screen.orientation.unlock();
+      }
+      // Exit fullscreen on unmount
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
       }
     };
   }, []);
@@ -64,6 +87,13 @@ const VideoPlayer = ({ movie, onClose }) => {
     resetControlsTimeout();
   };
 
+  const toggleZoomMode = () => {
+    const modes = ['fit', 'stretch', 'crop'];
+    const nextIndex = (modes.indexOf(zoomMode) + 1) % modes.length;
+    setZoomMode(modes[nextIndex]);
+    resetControlsTimeout();
+  };
+
   const resetControlsTimeout = () => {
     setShowControls(true);
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
@@ -78,12 +108,31 @@ const VideoPlayer = ({ movie, onClose }) => {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
+  const getObjectFitClass = () => {
+    switch (zoomMode) {
+      case 'stretch': return 'object-fill';
+      case 'crop': return 'object-cover';
+      default: return 'object-contain';
+    }
+  };
+
+  const getZoomLabel = () => {
+    switch (zoomMode) {
+      case 'stretch': return 'STRETCH (Fill)';
+      case 'crop': return 'CROP (Zoom)';
+      default: return 'FIT (Original)';
+    }
+  };
+
   return (
-    <div className="fixed inset-0 bg-black z-[100] flex flex-col items-center justify-center overflow-hidden">
+    <div 
+      ref={playerRef}
+      className="fixed inset-0 bg-black z-[100] flex flex-col items-center justify-center overflow-hidden"
+    >
       <video
         ref={videoRef}
         src={`${API_BASE_URL}/stream/${movie.telegram_message_id}`}
-        className="w-full h-full object-contain"
+        className={`w-full h-full transition-all duration-300 ${getObjectFitClass()}`}
         playsInline
         autoPlay
         onClick={togglePlay}
@@ -93,7 +142,7 @@ const VideoPlayer = ({ movie, onClose }) => {
       {/* Close Button */}
       <button 
         onClick={onClose}
-        className="absolute top-4 right-4 p-2 bg-black/50 rounded-full text-white z-[110]"
+        className="absolute top-4 right-4 p-2 bg-black/50 rounded-full text-white z-[110] hover:bg-black/80 transition-colors"
       >
         <X size={24} />
       </button>
@@ -109,21 +158,39 @@ const VideoPlayer = ({ movie, onClose }) => {
 
       {/* Bottom Controls */}
       {showControls && (
-        <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black to-transparent flex flex-col gap-4">
+        <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/90 to-transparent flex flex-col gap-4">
           <div className="flex items-center gap-4">
-            <span className="text-white text-xs font-bold">
+            <span className="text-white text-xs font-mono">
               {formatTime(currentTime)} / {formatTime(duration)}
             </span>
-            <div className="flex-1 h-1 bg-gray-600 rounded-full overflow-hidden">
+            <div className="flex-1 h-1.5 bg-gray-600/50 rounded-full overflow-hidden cursor-pointer">
               <div 
-                className="h-full bg-gold transition-all duration-300" 
+                className="h-full bg-gold transition-all duration-300 relative" 
                 style={{ width: `${(currentTime / duration) * 100}%` }}
-              />
+              >
+                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg" />
+              </div>
             </div>
-            <button className="flex items-center gap-1 text-white text-xs font-bold">
+            
+            <button 
+              onClick={toggleZoomMode}
+              className="flex items-center gap-2 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white text-[10px] font-black uppercase tracking-tighter transition-all"
+            >
+              <Maximize size={14} />
+              <span>{getZoomLabel()}</span>
+            </button>
+
+            <button className="flex items-center gap-1 text-white text-xs font-bold opacity-50">
               <Settings size={16} />
               <span>Quality</span>
             </button>
+          </div>
+          
+          <div className="flex justify-between items-center">
+            <h3 className="text-white font-bold text-sm truncate max-w-[70%]">{movie.title}</h3>
+            <div className="flex gap-4">
+              {/* Future controls like volume/speed can go here */}
+            </div>
           </div>
         </div>
       )}
