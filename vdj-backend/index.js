@@ -410,10 +410,21 @@ apiRouter.get('/movies', async (req, res) => {
     }
 });
 
+// Get movies by publisher name
+apiRouter.get('/movies/publisher/:name', async (req, res) => {
+    try {
+        const result = await db.query('SELECT * FROM movies WHERE publisher_name = $1 ORDER BY created_at DESC', [req.params.name]);
+        res.json(result.rows);
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] DB_ERROR:`, error);
+        res.status(500).json({ error: 'Database error', details: error.message });
+    }
+});
+
 // Publish new movie with direct file upload
 apiRouter.post('/upload', upload.single('movie_file'), async (req, res) => {
     const startTime = Date.now();
-    const { dj_name, title, summary, genre } = req.body;
+    const { dj_name, title, summary, genre, publisher_name } = req.body;
     const file = req.file;
     
     if (!file || !dj_name || !title) {
@@ -426,7 +437,7 @@ apiRouter.post('/upload', upload.single('movie_file'), async (req, res) => {
         return res.status(500).json({ error: 'Server configuration error: Missing storage ID' });
     }
 
-    console.log(`[${new Date().toISOString()}] UPLOAD_STARTED: ${title} (${(file.size / (1024 * 1024)).toFixed(2)} MB) by ${dj_name}`);
+    console.log(`[${new Date().toISOString()}] UPLOAD_STARTED: ${title} (${(file.size / (1024 * 1024)).toFixed(2)} MB) by ${dj_name} (Publisher: ${publisher_name || 'Anonymous'})`);
 
     try {
         console.log(`[${new Date().toISOString()}] UPLOAD_TO_CLOUD_STARTED: ${title}`);
@@ -450,7 +461,7 @@ apiRouter.post('/upload', upload.single('movie_file'), async (req, res) => {
         
         const uploadedFile = await activeClient.sendFile(entity, {
             file: file.path, // Read directly from disk
-            caption: `🎬 **${title}**\n🎙️ Narrated by: ${dj_name}\n\n${summary}\n\n#${genre}`,
+            caption: `🎬 **${title}**\n🎙️ Narrated by: ${dj_name}\n👤 Published by: ${publisher_name || 'Anonymous'}\n\n${summary}\n\n#${genre}`,
             parseMode: 'markdown',
             workers: 4, // Reduced from 8 for better stability on smaller instances
             maxChunkSize: 512 * 1024, // Reduced from 1MB to 512KB for better reliability
@@ -471,8 +482,8 @@ apiRouter.post('/upload', upload.single('movie_file'), async (req, res) => {
         const storage_link = `https://cloud-storage.vdj-movies.com/c/${channelId.replace('-100', '')}/${uploadedFile.id}`;
 
         const result = await db.query(
-            'INSERT INTO movies (dj_name, title, summary, genre, telegram_link, telegram_message_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [dj_name, title, summary, genre, storage_link, uploadedFile.id]
+            'INSERT INTO movies (dj_name, title, summary, genre, telegram_link, telegram_message_id, publisher_name) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+            [dj_name, title, summary, genre, storage_link, uploadedFile.id, publisher_name || 'Anonymous']
         );
         
         const totalDuration = ((Date.now() - startTime) / 1000).toFixed(2);

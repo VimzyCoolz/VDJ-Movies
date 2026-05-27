@@ -6,6 +6,7 @@
 -- ALTER TABLE movies ADD COLUMN IF NOT EXISTS genre TEXT;
 -- ALTER TABLE movies ADD COLUMN IF NOT EXISTS telegram_link TEXT;
 -- ALTER TABLE movies ADD COLUMN IF NOT EXISTS telegram_message_id INTEGER;
+-- ALTER TABLE movies ADD COLUMN IF NOT EXISTS publisher_name TEXT;
 
 -- Movies table
 CREATE TABLE IF NOT EXISTS movies (
@@ -16,6 +17,7 @@ CREATE TABLE IF NOT EXISTS movies (
     genre TEXT,
     telegram_link TEXT,
     telegram_message_id INTEGER,
+    publisher_name TEXT,
     thumbnail_url TEXT,
     duration TEXT,
     views INTEGER DEFAULT 0,

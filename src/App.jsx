@@ -244,9 +244,14 @@ const MovieBottomSheet = ({ movie, isOpen, onClose, onPlay }) => {
           <p className="text-sm text-gray-300 leading-relaxed mb-8">
             {movie.summary || "No description available for this movie."}
             <br />
-            <span className="text-[10px] text-gray-500 uppercase font-bold mt-2 block">
-              UPLOADED BY: {movie.dj_name}
-            </span>
+            <div className="flex flex-col gap-1 mt-4">
+              <span className="text-[10px] text-gray-500 uppercase font-bold flex items-center gap-1">
+                🎙️ Narrator: <span className="text-gray-300">{movie.dj_name}</span>
+              </span>
+              <span className="text-[10px] text-gray-500 uppercase font-bold flex items-center gap-1">
+                👤 VDJ Publisher: <span className="text-gold">{movie.publisher_name || 'Anonymous'}</span>
+              </span>
+            </div>
           </p>
 
           {/* Action Buttons */}
@@ -470,7 +475,7 @@ const LibraryScreen = () => {
   );
 };
 
-const UploadScreen = () => {
+const UploadScreen = ({ user }) => {
   const [formData, setFormData] = useState({
     dj_name: '',
     title: '',
@@ -508,6 +513,11 @@ const UploadScreen = () => {
     e.preventDefault();
     if (!file) return;
 
+    if (!user) {
+      setError("You must be logged in to publish movies.");
+      return;
+    }
+
     setError(null);
     const data = new FormData();
     data.append('dj_name', formData.dj_name);
@@ -515,6 +525,7 @@ const UploadScreen = () => {
     data.append('summary', formData.summary);
     data.append('genre', formData.genre);
     data.append('movie_file', file);
+    data.append('publisher_name', user.username);
 
     setUploading(true);
     setProgress(0);
@@ -686,7 +697,10 @@ const UploadScreen = () => {
   );
 };
 
-const ProfileScreen = () => {
+const ProfileScreen = ({ user, onMovieClick }) => {
+  const [userMovies, setUserMovies] = useState([]);
+  const [loading, setLoading] = useState(false);
+
   useEffect(() => {
     // Mount CoolzTech Shared UI
     if (window.ctMount) {
@@ -696,33 +710,141 @@ const ProfileScreen = () => {
     }
   }, []);
 
+  useEffect(() => {
+    if (user) {
+      const fetchUserMovies = async () => {
+        setLoading(true);
+        try {
+          const response = await axios.get(`${API_BASE_URL}/movies/publisher/${user.username}`);
+          setUserMovies(Array.isArray(response.data) ? response.data : []);
+        } catch (err) {
+          console.error("Failed to fetch user movies:", err);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchUserMovies();
+    }
+  }, [user]);
+
+  const totalViews = userMovies.reduce((acc, movie) => acc + (movie.views || 0), 0);
+
   return (
     <div className="pb-20 min-h-screen">
       <div id="coolztech-auth-root" className="p-4">
-        {/* The CoolzTech Shared UI will mount here */}
-        <div className="bg-[#1e1e1e] rounded-2xl p-6 border border-gray-800 mb-6">
-          <div className="flex items-center gap-4 mb-8">
-            <div className="w-16 h-16 rounded-full bg-gold/10 border border-gold flex items-center justify-center text-gold">
-              <User size={32} />
+        {/* The CoolzTech Shared UI will mount here if not logged in */}
+        {user ? (
+          <div className="flex flex-col gap-6 p-4">
+            {/* Profile Header */}
+            <div className="bg-[#1e1e1e] rounded-3xl p-6 border border-gray-800 relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-4 opacity-10">
+                <User size={120} />
+              </div>
+              
+              <div className="flex items-center gap-4 mb-6 relative z-10">
+                <div className="w-20 h-20 rounded-2xl bg-gold/10 border-2 border-gold flex items-center justify-center text-gold shadow-lg shadow-gold/20">
+                  {user.avatar_url ? (
+                    <img src={user.avatar_url} alt={user.username} className="w-full h-full object-cover rounded-2xl" />
+                  ) : (
+                    <User size={40} />
+                  )}
+                </div>
+                <div>
+                  <h2 className="font-black text-2xl text-white tracking-tight">{user.username}</h2>
+                  <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">VDJ Publisher</p>
+                  <div className="flex gap-2 mt-2">
+                    <span className="px-2 py-0.5 bg-gold/10 text-gold text-[10px] font-black rounded-md border border-gold/20">VERIFIED</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 relative z-10">
+                <div className="bg-black/40 p-4 rounded-2xl border border-white/5">
+                  <p className="text-[10px] font-black text-gray-500 uppercase mb-1">Total Movies</p>
+                  <p className="text-xl font-black text-white">{userMovies.length}</p>
+                </div>
+                <div className="bg-black/40 p-4 rounded-2xl border border-white/5">
+                  <p className="text-[10px] font-black text-gray-500 uppercase mb-1">Total Views</p>
+                  <p className="text-xl font-black text-gold">{totalViews.toLocaleString()}</p>
+                </div>
+              </div>
             </div>
+
+            {/* User Movies */}
             <div>
-              <h2 className="font-black text-xl">Account Settings</h2>
-              <p className="text-xs text-gray-500">Manage your profile & preferences</p>
+              <h3 className="text-lg font-black text-white mb-4 px-2 flex items-center gap-2">
+                <Play size={20} className="text-gold" fill="currentColor" />
+                MY PUBLICATIONS
+              </h3>
+              
+              {loading ? (
+                <div className="flex justify-center py-10">
+                  <div className="w-8 h-8 border-4 border-gold border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              ) : userMovies.length > 0 ? (
+                <div className="grid grid-cols-2 gap-4">
+                  {userMovies.map(movie => (
+                    <div 
+                      key={movie.id} 
+                      className="bg-[#1e1e1e] rounded-2xl overflow-hidden border border-gray-800 active:scale-95 transition-all cursor-pointer group"
+                      onClick={() => onMovieClick(movie)}
+                    >
+                      <div className="aspect-video relative">
+                        <img 
+                          src={movie.thumbnail || `https://picsum.photos/seed/${movie.id}/400/225`} 
+                          className="w-full h-full object-cover" 
+                          alt={movie.title} 
+                        />
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Play fill="white" size={24} />
+                        </div>
+                      </div>
+                      <div className="p-3">
+                        <p className="text-xs font-black text-white truncate">{movie.title}</p>
+                        <p className="text-[9px] text-gray-500 font-bold mt-1 uppercase">{movie.genre} • ⭐ {movie.views}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="bg-[#1e1e1e] rounded-2xl p-10 text-center border border-dashed border-gray-800 opacity-50">
+                  <DownloadCloud size={40} className="mx-auto mb-4 text-gray-600" />
+                  <p className="text-sm font-bold text-gray-400">No movies published yet.</p>
+                  <Link to="/upload" className="text-xs text-gold font-black mt-2 inline-block uppercase tracking-widest">Upload Now</Link>
+                </div>
+              )}
+            </div>
+
+            {/* Account Actions */}
+            <div className="flex flex-col gap-3 mt-4">
+              <button className="flex items-center justify-between p-5 bg-[#1e1e1e] rounded-2xl text-sm font-black text-gray-300 border border-gray-800 active:bg-gray-800 transition-all">
+                <div className="flex items-center gap-3">
+                  <Settings size={20} className="text-gray-500" />
+                  ACCOUNT SETTINGS
+                </div>
+                <ChevronRight size={18} className="text-gray-600" />
+              </button>
+              <button 
+                onClick={() => {
+                  if (window.CoolzAuthClient) {
+                    const client = new window.CoolzAuthClient({ baseUrl: 'https://authcoolztech.vercel.app' });
+                    client.logout();
+                    window.location.reload();
+                  }
+                }}
+                className="flex items-center justify-center p-5 bg-red-500/5 rounded-2xl text-sm font-black text-red-500 border border-red-500/20 active:bg-red-500/10 transition-all"
+              >
+                LOGOUT SESSION
+              </button>
             </div>
           </div>
-          
-          <div className="flex flex-col gap-4">
-            <button className="flex items-center justify-between p-4 bg-[#252525] rounded-xl text-sm font-bold active:bg-gray-800 transition-colors">
-              App Theme Preferences <ChevronRight size={18} />
-            </button>
-            <button className="flex items-center justify-between p-4 bg-[#252525] rounded-xl text-sm font-bold active:bg-gray-800 transition-colors">
-              Clear Cache <ChevronRight size={18} />
-            </button>
-            <button className="flex items-center justify-between p-4 bg-[#252525] rounded-xl text-sm font-bold active:bg-gray-800 transition-colors">
-              Legal & Privacy <ChevronRight size={18} />
-            </button>
+        ) : (
+          /* Placeholder while CoolzTech UI mounts or if it fails */
+          <div className="flex flex-col items-center justify-center py-20 opacity-50">
+            <div className="w-10 h-10 border-4 border-gold border-t-transparent rounded-full animate-spin mb-4"></div>
+            <p className="text-sm font-bold text-gray-500">SECURE LOGIN LOADING...</p>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -734,6 +856,30 @@ const App = () => {
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [playingMovie, setPlayingMovie] = useState(null);
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      if (window.CoolzAuthClient) {
+        try {
+          const client = new window.CoolzAuthClient({ 
+            baseUrl: 'https://authcoolztech.vercel.app' 
+          });
+          const profile = await client.getProfile();
+          setUser(profile);
+        } catch (err) {
+          console.warn("User not logged in or session expired");
+        }
+      }
+    };
+    
+    // Initial fetch
+    fetchUser();
+    
+    // Listen for storage changes (login/logout in other tabs)
+    window.addEventListener('storage', fetchUser);
+    return () => window.removeEventListener('storage', fetchUser);
+  }, []);
 
   const handleMovieClick = (movie) => {
     setSelectedMovie(movie);
@@ -753,8 +899,8 @@ const App = () => {
         <Routes>
           <Route path="/" element={<HomeScreen onMovieClick={handleMovieClick} />} />
           <Route path="/library" element={<LibraryScreen />} />
-          <Route path="/upload" element={<UploadScreen />} />
-          <Route path="/profile" element={<ProfileScreen />} />
+          <Route path="/upload" element={<UploadScreen user={user} />} />
+          <Route path="/profile" element={<ProfileScreen user={user} onMovieClick={handleMovieClick} />} />
         </Routes>
       </main>
       <BottomNav />
