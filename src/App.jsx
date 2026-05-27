@@ -418,18 +418,18 @@ const UploadScreen = () => {
   const genres = ['Action', 'Kihindi', 'Comedy', 'Horror', 'Sci-Fi'];
 
   const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0];
-    if (selectedFile) {
-      // Vercel has a 4.5MB limit for serverless functions
-      if (selectedFile.size > 4.5 * 1024 * 1024) {
-        setError("File is too large for direct uplift (Max 4.5MB on Vercel). Please use a smaller file or contact admin to upgrade hosting.");
-        setFile(null);
-      } else {
-        setError(null);
-        setFile(selectedFile);
-      }
-    }
-  };
+     const selectedFile = e.target.files[0];
+     if (selectedFile) {
+       // Files are now hosted on Render, which supports larger uploads
+       if (selectedFile.size > 2000 * 1024 * 1024) {
+         setError("File is too large (Max 2GB). Please compress the movie or use a smaller file.");
+         setFile(null);
+       } else {
+         setError(null);
+         setFile(selectedFile);
+       }
+     }
+   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();

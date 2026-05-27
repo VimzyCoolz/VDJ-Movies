@@ -173,8 +173,8 @@ const storage = multer.diskStorage({
 const upload = multer({ 
     storage,
     limits: {
-        fileSize: 1024 * 1024 * 500, // 500MB limit for movie files
-        fieldSize: 1024 * 1024 * 10 // 10MB limit for metadata fields
+        fileSize: 1024 * 1024 * 2000, // 2GB limit (max supported by Telegram bots)
+        fieldSize: 1024 * 1024 * 50 // 50MB limit for metadata fields
     }
 });
 
