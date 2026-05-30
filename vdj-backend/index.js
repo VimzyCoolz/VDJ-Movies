@@ -558,7 +558,7 @@ apiRouter.post('/upload', upload.fields([
 
             const uploadedCover = await activeClient.sendFile(entity, {
                 file: coverFile.path,
-                caption: `🖼️ **Cover for ${title}**`,
+                caption: `**Cover for ${title}**`,
                 forceDocument: false
             });
             
@@ -585,7 +585,7 @@ apiRouter.post('/upload', upload.fields([
         
         const uploadedFile = await activeClient.sendFile(entity, {
             file: movieFile.path, // Read directly from disk
-            caption: `🎬 **${title}**\n🎙️ Narrated by: ${dj_name}\n👤 Published by: ${publisher_name || 'Anonymous'}\n\n${summary}\n\n#${genre}`,
+            caption: `**${title}**\nNarrated by: ${dj_name}\nPublished by: ${publisher_name || 'Anonymous'}\n\n${summary}\n\n#${genre}`,
             parseMode: 'markdown',
             workers: 4, 
             maxChunkSize: 512 * 1024, 

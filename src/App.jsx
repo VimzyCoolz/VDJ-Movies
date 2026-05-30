@@ -342,7 +342,7 @@ const MovieBottomSheet = ({ movie, isOpen, onClose, onPlay }) => {
           </h2>
           
           <div className="flex items-center gap-3 text-xs font-bold text-gray-400 mb-4">
-            <span className="flex items-center gap-1">⭐ {movie.views || 0} WATCHED</span>
+            <span className="flex items-center gap-1">{movie.views || 0} WATCHED</span>
             <span className="w-1 h-1 bg-gray-600 rounded-full" />
             <span className="text-gold uppercase tracking-widest">{movie.genre}</span>
             <span className="w-1 h-1 bg-gray-600 rounded-full" />
@@ -354,10 +354,10 @@ const MovieBottomSheet = ({ movie, isOpen, onClose, onPlay }) => {
             <br />
             <div className="flex flex-col gap-1 mt-4">
               <span className="text-[10px] text-gray-500 uppercase font-bold flex items-center gap-1">
-                🎙️ Narrator: <span className="text-gray-300">{movie.dj_name}</span>
+                Narrator: <span className="text-gray-300">{movie.dj_name}</span>
               </span>
               <span className="text-[10px] text-gray-500 uppercase font-bold flex items-center gap-1">
-                👤 VDJ Publisher: <span className="text-gold">{movie.publisher_name || 'Anonymous'}</span>
+                VDJ Publisher: <span className="text-gold">{movie.publisher_name || 'Anonymous'}</span>
               </span>
             </div>
           </p>
@@ -481,10 +481,6 @@ const GenreRow = ({ title, movies, onMovieClick }) => (
   <div className="flex flex-col gap-3 py-4">
     <div className="flex items-center justify-between px-4">
       <h2 className="text-lg font-bold flex items-center gap-2">
-        {title === 'Action' && '💥'}
-        {title === 'Kihindi' && '💃'}
-        {title === 'Comedy' && '🎭'}
-        {title === 'Horror' && '👻'}
         {title}
       </h2>
       <ChevronRight size={20} className="text-gray-500" />
