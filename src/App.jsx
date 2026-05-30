@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { Home, Library, Upload, User, Search, Play, X, CheckCircle2, DownloadCloud, ChevronRight, AlertTriangle, Settings, Pause, Maximize, Minimize, Trash2, Image as ImageIcon, TrendingUp, Menu } from 'lucide-react';
 import axios from 'axios';
+import AdSenseAd from './components/AdSenseAd'; // Import the AdSenseAd component
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5000/api' : '/api');
 
@@ -20,6 +21,12 @@ const VideoPlayer = ({ movie, onClose, user }) => {
   const [viewRegistered, setViewRegistered] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const controlsTimeoutRef = useRef(null);
+
+  // AdMob states
+  const [showInterstitialOverlay, setShowInterstitialOverlay] = useState(false);
+  const [interstitialShownThisSession, setInterstitialShownThisSession] = useState(false);
+  const [countdown, setCountdown] = useState(15);
+  const interstitialTimerId = useRef(null);
 
   useEffect(() => {
     // Check if already viewed in this session/device to prevent redundant logic
@@ -140,8 +147,54 @@ const VideoPlayer = ({ movie, onClose, user }) => {
     };
   }, []);
 
+  // Interstitial Ad Logic
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || interstitialShownThisSession) return;
+
+    const checkInterstitialTrigger = () => {
+      if (video.currentTime >= 0.5 && !interstitialShownThisSession) {
+        setShowInterstitialOverlay(true);
+        setInterstitialShownThisSession(true);
+        video.pause(); // Pause video when interstitial shows
+      }
+    };
+
+    video.addEventListener('timeupdate', checkInterstitialTrigger);
+
+    return () => {
+      video.removeEventListener('timeupdate', checkInterstitialTrigger);
+    };
+  }, [interstitialShownThisSession]);
+
+  // Countdown for Interstitial Ad
+  useEffect(() => {
+    if (showInterstitialOverlay) {
+      setCountdown(15); // Reset countdown
+      interstitialTimerId.current = setInterval(() => {
+        setCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(interstitialTimerId.current);
+            setShowInterstitialOverlay(false);
+            if (videoRef.current && !videoRef.current.paused) { // Only play if not manually paused
+              videoRef.current.play(); // Resume video after interstitial
+            }
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+
+    return () => {
+      if (interstitialTimerId.current) {
+        clearInterval(interstitialTimerId.current);
+      }
+    };
+  }, [showInterstitialOverlay]);
+
   const togglePlay = () => {
-    if (isLocked) return;
+    if (isLocked || showInterstitialOverlay) return; // Prevent play/pause during interstitial
     if (videoRef.current.paused) {
       videoRef.current.play();
       setIsPlaying(true);
@@ -165,7 +218,7 @@ const VideoPlayer = ({ movie, onClose, user }) => {
   };
 
   const toggleZoomMode = () => {
-    if (isLocked) return;
+    if (isLocked || showInterstitialOverlay) return;
     const modes = ['fit', 'stretch', 'crop'];
     const nextIndex = (modes.indexOf(zoomMode) + 1) % modes.length;
     setZoomMode(modes[nextIndex]);
@@ -213,6 +266,16 @@ const VideoPlayer = ({ movie, onClose, user }) => {
     }
   };
 
+  const handleCloseInterstitial = useCallback(() => {
+    setShowInterstitialOverlay(false);
+    if (interstitialTimerId.current) {
+      clearInterval(interstitialTimerId.current);
+    }
+    if (videoRef.current) {
+      videoRef.current.play(); // Resume video when manually closed
+    }
+  }, []);
+
   return (
     <div 
       ref={playerRef}
@@ -228,8 +291,52 @@ const VideoPlayer = ({ movie, onClose, user }) => {
         onMouseMove={resetControlsTimeout}
       />
 
+      {/* Interstitial Ad Overlay */}
+      {showInterstitialOverlay && (
+        <div className="absolute inset-0 bg-black/90 z-[101] flex flex-col md:flex-row items-center justify-center p-4 text-white">
+          {/* Left Side Information Panel and Countdown */}
+          <div className="flex flex-col items-center justify-center md:w-1/2 p-4 text-center md:text-left">
+            <div className="text-xl md:text-3xl font-bold mb-4">
+              {countdown > 0 ? `Ad closing in ${countdown} seconds...` : "Ad closing soon..."}
+            </div>
+            <p className="text-sm md:text-lg">
+              We only show one ad at the beginning of your video, so you can enjoy the rest of your movie uninterrupted and ad-free.
+            </p>
+            {countdown <= 0 && (
+              <button
+                onClick={handleCloseInterstitial}
+                className="mt-4 px-6 py-2 bg-gold text-black rounded-full font-bold hover:bg-[#e6b800] transition-colors"
+              >
+                Continue Video
+              </button>
+            )}
+          </div>
+          {/* Right Side Ad Unit */}
+          <div className="flex items-center justify-center md:w-1/2 p-4">
+            <AdSenseAd
+              adSlot={import.meta.env.VITE_ADMOB_INTERSTITIAL_UNIT_ID}
+              adFormat="auto"
+              responsive={true}
+              className="w-[300px] h-[250px] md:w-[336px] md:h-[280px]" // Example sizes, AdSense will adjust
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Banner Ad for Landscape Mode */}
+      {isLandscape && !showInterstitialOverlay && (
+        <div className="absolute right-0 top-1/2 -translate-y-1/2 p-4 z-[105] hidden md:block"> {/* Only show on medium-large screens */}
+          <AdSenseAd
+            adSlot={import.meta.env.VITE_ADMOB_BANNER_UNIT_ID || import.meta.env.VITE_ADMOB_INTERSTITIAL_UNIT_ID} // Using interstitial unit for banner as placeholder
+            adFormat="auto"
+            responsive={true}
+            className="w-[160px] h-[600px]" // Example skyscraper size
+          />
+        </div>
+      )}
+
       {/* Close Button */}
-      {showControls && (
+      {showControls && !showInterstitialOverlay && (
         <button 
           onClick={onClose}
           className="absolute top-4 right-4 p-2 bg-black/50 rounded-full text-white z-[110] hover:bg-black/80 transition-colors"
@@ -239,7 +346,7 @@ const VideoPlayer = ({ movie, onClose, user }) => {
       )}
 
       {/* Play/Pause Overlay Icon */}
-      {showControls && !isLocked && (
+      {showControls && !isLocked && !showInterstitialOverlay && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="bg-black/40 p-6 rounded-full animate-fade-out">
             {isPlaying ? <Pause size={48} fill="white" /> : <Play size={48} fill="white" />}
@@ -248,7 +355,7 @@ const VideoPlayer = ({ movie, onClose, user }) => {
       )}
 
       {/* Bottom Controls */}
-      {showControls && (
+      {showControls && !showInterstitialOverlay && (
         <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/90 to-transparent flex flex-col gap-4">
           {!isLocked ? (
             <>
