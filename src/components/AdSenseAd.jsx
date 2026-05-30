@@ -8,7 +8,7 @@ const AdSenseAd = ({ adSlot, adFormat = 'auto', responsive = true, className }) 
     if (!loading && adConfig && window.adsbygoogle) {
       try {
         (window.adsbygoogle = window.adsbygoogle || []).push({
-          google_ad_client: adConfig.VITE_GOOGLE_AD_CLIENT,
+          google_ad_client: "ca-pub-5756320219871523",
           enable_page_level_ads: true,
         });
       } catch (e) {
@@ -17,7 +17,7 @@ const AdSenseAd = ({ adSlot, adFormat = 'auto', responsive = true, className }) 
     }
   }, [loading, adConfig]);
 
-  if (loading || error || !adConfig || !adConfig.VITE_GOOGLE_AD_CLIENT) {
+  if (loading || error || !adConfig) {
     return null; // Don't render ads until config is loaded or if there's an error
   }
 
@@ -25,7 +25,7 @@ const AdSenseAd = ({ adSlot, adFormat = 'auto', responsive = true, className }) 
     <ins
       className={`adsbygoogle ${className}`}
       style={{ display: 'block' }}
-      data-ad-client={adConfig.VITE_GOOGLE_AD_CLIENT}
+      data-ad-client="ca-pub-5756320219871523"
       data-ad-slot={adSlot}
       data-ad-format={adFormat}
       data-full-width-responsive={responsive}
