@@ -11,7 +11,6 @@ const AdSenseAd = ({ adSlot, adFormat = 'auto', responsive = true, className }) 
           google_ad_client: adConfig.VITE_GOOGLE_AD_CLIENT,
           enable_page_level_ads: true,
         });
-        (window.adsbygoogle = window.adsbygoogle || []).push({});
       } catch (e) {
         console.error("AdSense error: ", e);
       }
