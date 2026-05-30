@@ -3,12 +3,14 @@ import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
 import { Home, Library, Upload, User, Search, Play, X, CheckCircle2, DownloadCloud, ChevronRight, AlertTriangle, Settings, Pause, Maximize, Minimize, Trash2, Image as ImageIcon, TrendingUp, Menu } from 'lucide-react';
 import axios from 'axios';
 import AdSenseAd from './components/AdSenseAd'; // Import the AdSenseAd component
+import { useAdConfig } from './contexts/AdConfigContext'; // New import
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5000/api' : '/api');
 
 // --- Components ---
 
 const VideoPlayer = ({ movie, onClose, user }) => {
+  const { adConfig, loading: adConfigLoading, error: adConfigError } = useAdConfig(); // New line
   const videoRef = useRef(null);
   const playerRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -150,22 +152,21 @@ const VideoPlayer = ({ movie, onClose, user }) => {
   // Interstitial Ad Logic
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || interstitialShownThisSession) return;
+    if (!video || interstitialShownThisSession || adConfigLoading || adConfigError || !adConfig) return; // Added adConfig checks
 
     const checkInterstitialTrigger = () => {
       if (video.currentTime >= 0.5 && !interstitialShownThisSession) {
         setShowInterstitialOverlay(true);
         setInterstitialShownThisSession(true);
-        video.pause(); // Pause video when interstitial shows
+        video.pause();
       }
     };
 
     video.addEventListener('timeupdate', checkInterstitialTrigger);
-
     return () => {
       video.removeEventListener('timeupdate', checkInterstitialTrigger);
     };
-  }, [interstitialShownThisSession]);
+  }, [interstitialShownThisSession, adConfigLoading, adConfigError, adConfig]); // Added adConfig dependencies
 
   // Countdown for Interstitial Ad
   useEffect(() => {
@@ -276,6 +277,22 @@ const VideoPlayer = ({ movie, onClose, user }) => {
     }
   }, []);
 
+  if (adConfigLoading) { // New loading state for ad config
+    return (
+      <div className="fixed inset-0 bg-black z-[100] flex items-center justify-center text-white">
+        Loading Ad Configuration...
+      </div>
+    );
+  }
+
+  if (adConfigError) { // New error state for ad config
+    return (
+      <div className="fixed inset-0 bg-black z-[100] flex items-center justify-center text-red-500">
+        Error loading Ad Configuration.
+      </div>
+    );
+  }
+
   return (
     <div 
       ref={playerRef}
@@ -292,7 +309,7 @@ const VideoPlayer = ({ movie, onClose, user }) => {
       />
 
       {/* Interstitial Ad Overlay */}
-      {showInterstitialOverlay && (
+      {showInterstitialOverlay && adConfig && ( // Added adConfig condition
         <div className="absolute inset-0 bg-black/90 z-[101] flex flex-col md:flex-row items-center justify-center p-4 text-white">
           {/* Left Side Information Panel and Countdown */}
           <div className="flex flex-col items-center justify-center md:w-1/2 p-4 text-center md:text-left">
@@ -314,7 +331,7 @@ const VideoPlayer = ({ movie, onClose, user }) => {
           {/* Right Side Ad Unit */}
           <div className="flex items-center justify-center md:w-1/2 p-4">
             <AdSenseAd
-              adSlot={import.meta.env.VITE_ADMOB_INTERSTITIAL_UNIT_ID}
+              adSlot={adConfig.VITE_ADMOB_INTERSTITIAL_UNIT_ID} // Use fetched adConfig
               adFormat="auto"
               responsive={true}
               className="w-[300px] h-[250px] md:w-[336px] md:h-[280px]" // Example sizes, AdSense will adjust
@@ -324,10 +341,10 @@ const VideoPlayer = ({ movie, onClose, user }) => {
       )}
 
       {/* Banner Ad for Landscape Mode */}
-      {isLandscape && !showInterstitialOverlay && (
+      {isLandscape && !showInterstitialOverlay && adConfig && ( // Added adConfig condition
         <div className="absolute right-0 top-1/2 -translate-y-1/2 p-4 z-[105] hidden md:block"> {/* Only show on medium-large screens */}
           <AdSenseAd
-            adSlot={import.meta.env.VITE_ADMOB_BANNER_UNIT_ID || import.meta.env.VITE_ADMOB_INTERSTITIAL_UNIT_ID} // Using interstitial unit for banner as placeholder
+            adSlot={adConfig.VITE_ADMOB_BANNER_UNIT_ID || adConfig.VITE_ADMOB_INTERSTITIAL_UNIT_ID} // Use fetched adConfig
             adFormat="auto"
             responsive={true}
             className="w-[160px] h-[600px]" // Example skyscraper size

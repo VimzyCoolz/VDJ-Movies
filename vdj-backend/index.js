@@ -390,6 +390,14 @@ apiRouter.get('/health', async (req, res) => {
     }
 });
 
+apiRouter.get('/config', (req, res) => {
+    res.json({
+        VITE_ADMOB_APP_ID: process.env.VITE_ADMOB_APP_ID,
+        VITE_ADMOB_INTERSTITIAL_UNIT_ID: process.env.VITE_ADMOB_INTERSTITIAL_UNIT_ID,
+        VITE_ADMOB_BANNER_UNIT_ID: process.env.VITE_ADMOB_BANNER_UNIT_ID,
+    });
+});
+
 // Friendly GET handler for /upload to prevent 404s
 apiRouter.get('/upload', (req, res) => {
     res.json({ 
