@@ -21,6 +21,7 @@ export const AdConfigProvider = ({ children }) => {
       try {
         const response = await axios.get('/api/config'); // Assuming /api/config is relative to the app's base URL
         setAdConfig(response.data);
+        console.log("Fetched AdSense configuration:", response.data); // Debugging line
       } catch (err) {
         console.error("Failed to fetch AdSense configuration:", err);
         setError(err);

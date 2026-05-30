@@ -7,6 +7,7 @@ const AdSenseAd = ({ adSlot, adFormat = 'auto', responsive = true, className }) 
   useEffect(() => {
     if (!loading && adConfig && window.adsbygoogle) {
       try {
+        console.log("Attempting to push AdSense config:", { google_ad_client: adConfig.VITE_GOOGLE_AD_CLIENT }); // Debugging line
         (window.adsbygoogle = window.adsbygoogle || []).push({
           google_ad_client: adConfig.VITE_GOOGLE_AD_CLIENT,
           enable_page_level_ads: true,
