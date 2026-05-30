@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --gold: #FFD700;
+}
+
+body {
+  margin: 0;
+  background-color: #0f0f0f;
+  color: white;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Hide scrollbar for horizontal rails */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.gold-icon {
+  color: var(--gold);
+}
+
+.bg-gold {
+  background-color: var(--gold);
+}
+
+.border-gold {
+  border-color: var(--gold);
+}
+
+.text-gold {
+  color: var(--gold);
+}
+
+/* Animations */
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes fade-out {
+  0% { opacity: 1; transform: scale(1); }
+  70% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.1); }
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.5s infinite;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-fade-out {
+  animation: fade-out 2s forwards;
+}
+
+/* Netflix-style card hover (for desktop) */
+@media (min-width: 1024px) {
+  .movie-card:hover {
+    transform: scale(1.05);
+    z-index: 10;
+  }
+}
+
+.movie-card {
+  transition: transform 0.3s ease;
+}
