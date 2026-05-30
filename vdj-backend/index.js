@@ -395,6 +395,7 @@ apiRouter.get('/config', (req, res) => {
         VITE_ADMOB_APP_ID: process.env.VITE_ADMOB_APP_ID,
         VITE_ADMOB_INTERSTITIAL_UNIT_ID: process.env.VITE_ADMOB_INTERSTITIAL_UNIT_ID,
         VITE_ADMOB_BANNER_UNIT_ID: process.env.VITE_ADMOB_BANNER_UNIT_ID,
+        VITE_GOOGLE_AD_CLIENT: process.env.VITE_GOOGLE_AD_CLIENT,
     });
 });
 

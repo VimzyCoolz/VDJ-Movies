@@ -8,7 +8,7 @@ const AdSenseAd = ({ adSlot, adFormat = 'auto', responsive = true, className }) 
     if (!loading && adConfig && window.adsbygoogle) {
       try {
         (window.adsbygoogle = window.adsbygoogle || []).push({
-          google_ad_client: adConfig.VITE_ADMOB_APP_ID,
+          google_ad_client: adConfig.VITE_GOOGLE_AD_CLIENT,
           enable_page_level_ads: true,
         });
         (window.adsbygoogle = window.adsbygoogle || []).push({});
@@ -18,7 +18,7 @@ const AdSenseAd = ({ adSlot, adFormat = 'auto', responsive = true, className }) 
     }
   }, [loading, adConfig]);
 
-  if (loading || error || !adConfig || !adConfig.VITE_ADMOB_APP_ID) {
+  if (loading || error || !adConfig || !adConfig.VITE_GOOGLE_AD_CLIENT) {
     return null; // Don't render ads until config is loaded or if there's an error
   }
 
@@ -26,7 +26,7 @@ const AdSenseAd = ({ adSlot, adFormat = 'auto', responsive = true, className }) 
     <ins
       className={`adsbygoogle ${className}`}
       style={{ display: 'block' }}
-      data-ad-client={adConfig.VITE_ADMOB_APP_ID}
+      data-ad-client={adConfig.VITE_GOOGLE_AD_CLIENT}
       data-ad-slot={adSlot}
       data-ad-format={adFormat}
       data-full-width-responsive={responsive}
