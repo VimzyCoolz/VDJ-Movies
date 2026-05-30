@@ -22,9 +22,10 @@
     <!-- Mount point for CoolzTech Auth -->
     <div id="coolztech-auth-root"></div>
     <script type="module" src="/src/main.jsx"></script>
-    <script type="module">
+
+    <script>
       (adsbygoogle = window.adsbygoogle || []).push({
-        google_ad_client: import.meta.env.VITE_GOOGLE_AD_CLIENT,
+        google_ad_client: "%VITE_GOOGLE_AD_CLIENT%",
         enable_page_level_ads: true
       });
     </script>
