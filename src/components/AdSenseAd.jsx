@@ -9,7 +9,6 @@ const AdSenseAd = ({ adSlot, adFormat = 'auto', responsive = true, className }) 
       try {
         (window.adsbygoogle = window.adsbygoogle || []).push({
           google_ad_client: "ca-pub-5756320219871523",
-          enable_page_level_ads: true,
         });
       } catch (e) {
         console.error("AdSense error: ", e);
