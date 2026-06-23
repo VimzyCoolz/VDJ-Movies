@@ -343,16 +343,24 @@ const MovieBottomSheet = ({ movie, isOpen, onClose, onPlay }) => {
       {/* Sheet */}
       <div className="relative w-full max-w-md bg-[#121212] rounded-t-[32px] overflow-hidden flex flex-col h-[70vh] shadow-2xl animate-slide-up">
         {/* Banner */}
-        <div className="relative w-full aspect-video">
+        <div className="relative w-full aspect-video cursor-pointer" onClick={() => onPlay(movie)}>
           <img 
             src={movie.telegram_file_id ? `${API_BASE_URL}/thumbnail/${movie.id}` : movie.thumbnail_url || movie.thumbnail || `https://picsum.photos/seed/${movie.id}/600/340`} 
             alt={movie.title}
             className="w-full h-full object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-[#121212] via-transparent to-transparent" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="bg-black/50 rounded-full p-4">
+              <Play size={48} fill="white" />
+            </div>
+          </div>
           <button 
-            onClick={onClose}
-            className="absolute top-4 right-4 p-2 bg-black/50 rounded-full text-white"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            className="absolute top-4 right-4 p-2 bg-black/50 rounded-full text-white z-10"
           >
             <X size={20} />
           </button>
