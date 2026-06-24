@@ -486,6 +486,389 @@ apiRouter.get('/health', async (req, res) => {
     }
 });
 
+// --- DJ Profile Routes ---
+
+// Get DJ profile by name
+apiRouter.get('/djs/name/:djName', async (req, res) => {
+    try {
+        const djName = req.params.djName;
+        
+        // First, ensure the DJ exists in the djs table (create if not)
+        let djResult = await db.query('SELECT * FROM djs WHERE name = $1', [djName]);
+        
+        if (djResult.rows.length === 0) {
+            // Create a new DJ entry if it doesn't exist
+            await db.query('INSERT INTO djs (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [djName]);
+            djResult = await db.query('SELECT * FROM djs WHERE name = $1', [djName]);
+        }
+        
+        const dj = djResult.rows[0];
+        
+        // Get manager info
+        let manager = null;
+        if (dj.manager_user_id) {
+            const managerResult = await db.query('SELECT username FROM users WHERE id = $1', [dj.manager_user_id]);
+            if (managerResult.rows.length > 0) {
+                manager = managerResult.rows[0];
+            }
+        }
+        
+        // Get follower count
+        const followersResult = await db.query('SELECT COUNT(*) as count FROM followers WHERE followed_dj_id = $1', [dj.id]);
+        const followerCount = parseInt(followersResult.rows[0].count);
+        
+        // Get movie count
+        const moviesResult = await db.query('SELECT COUNT(*) as count FROM movies WHERE dj_name = $1', [djName]);
+        const movieCount = parseInt(moviesResult.rows[0].count);
+        
+        res.json({
+            ...dj,
+            manager,
+            followerCount,
+            movieCount
+        });
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] DJ_PROFILE_ERROR:`, error);
+        res.status(500).json({ error: 'Database error', details: error.message });
+    }
+});
+
+// Get movies for a DJ with filters
+apiRouter.get('/djs/:djId/movies', async (req, res) => {
+    try {
+        const djId = req.params.djId;
+        const { sort = 'latest' } = req.query;
+        
+        // Get DJ name
+        const djResult = await db.query('SELECT name FROM djs WHERE id = $1', [djId]);
+        if (djResult.rows.length === 0) {
+            return res.status(404).json({ error: 'DJ not found' });
+        }
+        
+        const djName = djResult.rows[0].name;
+        
+        let query = 'SELECT m.*, t.telegram_file_id FROM movies m LEFT JOIN thumbnails t ON m.id = t.movie_id WHERE m.dj_name = $1';
+        const params = [djName];
+        
+        if (sort === 'popular') {
+            query += ' ORDER BY m.views DESC';
+        } else {
+            query += ' ORDER BY m.created_at DESC';
+        }
+        
+        const result = await db.query(query, params);
+        res.json(result.rows);
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] DJ_MOVIES_ERROR:`, error);
+        res.status(500).json({ error: 'Database error', details: error.message });
+    }
+});
+
+// Get all DJs
+apiRouter.get('/djs', async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT 
+        d.*,
+        u.username as manager_username,
+        (SELECT COUNT(*) FROM movies WHERE dj_name = d.name) as movie_count,
+        (SELECT COUNT(*) FROM followers WHERE followed_dj_id = d.id) as follower_count
+      FROM djs d
+      LEFT JOIN users u ON d.manager_user_id = u.id
+      ORDER BY d.name
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] DJS_LIST_ERROR:`, error);
+    res.status(500).json({ error: 'Database error', details: error.message });
+  }
+});
+
+// --- User Sync API Route ---
+// Sync CoolzAuth user to our local database
+apiRouter.post('/users/sync', async (req, res) => {
+    const { id, username, email, avatar_url, phone_number } = req.body;
+
+    if (!id || !username || !email) {
+        return res.status(400).json({ error: 'Missing required user fields' });
+    }
+
+    try {
+        console.log(`[${new Date().toISOString()}] USER_SYNC_ATTEMPT: ID ${id}, Username ${username}`);
+        
+        // Check if user already exists
+        const existingUser = await db.query('SELECT * FROM users WHERE id = $1', [id]);
+        
+        if (existingUser.rows.length > 0) {
+            // Update existing user
+            const updateResult = await db.query(
+                'UPDATE users SET username = $1, email = $2, avatar_url = $3, phone_number = $4, updated_at = NOW() WHERE id = $5 RETURNING *',
+                [username, email, avatar_url, phone_number, id]
+            );
+            console.log(`[${new Date().toISOString()}] USER_UPDATED: ${username} (ID: ${id})`);
+            return res.json(updateResult.rows[0]);
+        }
+
+        // Insert new user - handle both serial and non-serial id columns
+        const insertResult = await db.query(
+            `INSERT INTO users (id, username, email, avatar_url, phone_number, password_hash) 
+             VALUES ($1, $2, $3, $4, $5, NULL) 
+             ON CONFLICT (id) DO UPDATE SET
+             username = EXCLUDED.username,
+             email = EXCLUDED.email,
+             avatar_url = EXCLUDED.avatar_url,
+             phone_number = EXCLUDED.phone_number,
+             updated_at = NOW()
+             RETURNING *`,
+            [id, username, email, avatar_url, phone_number]
+        );
+        console.log(`[${new Date().toISOString()}] NEW_USER_SYNCED: ${username} (ID: ${id})`);
+        res.json(insertResult.rows[0]);
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] USER_SYNC_ERROR:`, error.message);
+        console.error('Stack trace:', error.stack);
+        res.status(500).json({ 
+            error: 'Failed to sync user', 
+            details: error.message,
+            hint: 'Make sure you have applied the ALTER TABLE commands to update your users table!'
+        });
+    }
+});
+
+// --- Series (Packs) API Routes ---
+
+// Create a new series (pack)
+apiRouter.post('/series', async (req, res) => {
+  const { title, description, user_id, dj_name } = req.body;
+  
+  if (!user_id) {
+    return res.status(401).json({ error: 'Unauthorized: You must be logged in to create a pack' });
+  }
+  
+  if (!title || !dj_name) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+  
+  try {
+    // Verify user exists
+    const userCheck = await db.query('SELECT id FROM users WHERE id = $1', [user_id]);
+    if (userCheck.rows.length === 0) {
+      return res.status(401).json({ error: 'Unauthorized: User not found' });
+    }
+
+    // Get or create DJ
+    let djResult = await db.query('SELECT id FROM djs WHERE name = $1', [dj_name]);
+    if (djResult.rows.length === 0) {
+      await db.query('INSERT INTO djs (name) VALUES ($1)', [dj_name]);
+      djResult = await db.query('SELECT id FROM djs WHERE name = $1', [dj_name]);
+    }
+    const dj_id = djResult.rows[0].id;
+
+    const result = await db.query(
+      'INSERT INTO series (title, description, user_id, dj_id) VALUES ($1, $2, $3, $4) RETURNING *',
+      [title, description, user_id, dj_id]
+    );
+    console.log(`[${new Date().toISOString()}] PACK_CREATED: ${title} by user ${user_id}`);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] CREATE_SERIES_ERROR:`, error);
+    res.status(500).json({ error: 'Database error', details: error.message });
+  }
+});
+
+// Add movie to series (pack)
+apiRouter.post('/series/:seriesId/movies', async (req, res) => {
+  const { seriesId } = req.params;
+  const { movie_id, order_in_series } = req.body;
+  
+  try {
+    // Get current max order
+    const maxOrderResult = await db.query(
+      'SELECT COALESCE(MAX(order_in_series), 0) as max_order FROM series_movies WHERE series_id = $1',
+      [seriesId]
+    );
+    const newOrder = order_in_series !== undefined ? order_in_series : maxOrderResult.rows[0].max_order + 1;
+
+    await db.query(
+      'INSERT INTO series_movies (series_id, movie_id, order_in_series) VALUES ($1, $2, $3) ON CONFLICT (series_id, movie_id) DO UPDATE SET order_in_series = EXCLUDED.order_in_series',
+      [seriesId, movie_id, newOrder]
+    );
+
+    // Update series updated_at
+    await db.query('UPDATE series SET updated_at = NOW() WHERE id = $1', [seriesId]);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] ADD_MOVIE_TO_SERIES_ERROR:`, error);
+    res.status(500).json({ error: 'Database error', details: error.message });
+  }
+});
+
+// Get series by user
+apiRouter.get('/series/user/:userId', async (req, res) => {
+  const { userId } = req.params;
+  
+  try {
+    const result = await db.query('SELECT * FROM series WHERE user_id = $1 ORDER BY updated_at DESC', [userId]);
+    
+    // For each series, get movie count and thumbnail
+    const seriesWithDetails = await Promise.all(result.rows.map(async (series) => {
+      const movieCountResult = await db.query('SELECT COUNT(*) as count FROM series_movies WHERE series_id = $1', [series.id]);
+      const thumbnailResult = await db.query(`
+        SELECT t.telegram_file_id 
+        FROM series_movies sm
+        JOIN movies m ON sm.movie_id = m.id
+        LEFT JOIN thumbnails t ON m.id = t.movie_id
+        WHERE sm.series_id = $1
+        ORDER BY sm.order_in_series ASC
+        LIMIT 1
+      `, [series.id]);
+      
+      return {
+        ...series,
+        movie_count: parseInt(movieCountResult.rows[0].count),
+        thumbnail_telegram_file_id: thumbnailResult.rows[0]?.telegram_file_id
+      };
+    }));
+    
+    res.json(seriesWithDetails);
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] GET_USER_SERIES_ERROR:`, error);
+    res.status(500).json({ error: 'Database error', details: error.message });
+  }
+});
+
+// Get all series (packs)
+apiRouter.get('/series', async (req, res) => {
+  try {
+    const result = await db.query('SELECT * FROM series ORDER BY updated_at DESC');
+    
+    // For each series, get movie count and thumbnail
+    const seriesWithDetails = await Promise.all(result.rows.map(async (series) => {
+      const movieCountResult = await db.query('SELECT COUNT(*) as count FROM series_movies WHERE series_id = $1', [series.id]);
+      const thumbnailResult = await db.query(`
+        SELECT t.telegram_file_id 
+        FROM series_movies sm
+        JOIN movies m ON sm.movie_id = m.id
+        LEFT JOIN thumbnails t ON m.id = t.movie_id
+        WHERE sm.series_id = $1
+        ORDER BY sm.order_in_series ASC
+        LIMIT 1
+      `, [series.id]);
+      
+      return {
+        ...series,
+        movie_count: parseInt(movieCountResult.rows[0].count),
+        thumbnail_telegram_file_id: thumbnailResult.rows[0]?.telegram_file_id
+      };
+    }));
+    
+    res.json(seriesWithDetails);
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] GET_ALL_SERIES_ERROR:`, error);
+    res.status(500).json({ error: 'Database error', details: error.message });
+  }
+});
+
+// Get series by ID with movies
+apiRouter.get('/series/:seriesId', async (req, res) => {
+  const { seriesId } = req.params;
+  
+  try {
+    const seriesResult = await db.query('SELECT * FROM series WHERE id = $1', [seriesId]);
+    if (seriesResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Series not found' });
+    }
+    
+    const moviesResult = await db.query(`
+      SELECT m.*, t.telegram_file_id, sm.order_in_series
+      FROM series_movies sm
+      JOIN movies m ON sm.movie_id = m.id
+      LEFT JOIN thumbnails t ON m.id = t.movie_id
+      WHERE sm.series_id = $1
+      ORDER BY sm.order_in_series ASC
+    `, [seriesId]);
+    
+    res.json({
+      ...seriesResult.rows[0],
+      movies: moviesResult.rows
+    });
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] GET_SERIES_ERROR:`, error);
+    res.status(500).json({ error: 'Database error', details: error.message });
+  }
+});
+
+// Update series (pack)
+apiRouter.put('/series/:seriesId', async (req, res) => {
+  const { seriesId } = req.params;
+  const { title, description, user_id } = req.body;
+  
+  try {
+    // Check if series exists
+    const seriesCheck = await db.query('SELECT * FROM series WHERE id = $1', [seriesId]);
+    if (seriesCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Series not found' });
+    }
+    
+    // Verify user owns the series
+    if (user_id && seriesCheck.rows[0].user_id !== user_id) {
+      return res.status(403).json({ error: 'Forbidden: You do not own this pack' });
+    }
+    
+    // Update series
+    const result = await db.query(
+      'UPDATE series SET title = $1, description = $2, updated_at = NOW() WHERE id = $3 RETURNING *',
+      [title || seriesCheck.rows[0].title, description, seriesId]
+    );
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] UPDATE_SERIES_ERROR:`, error);
+    res.status(500).json({ error: 'Database error', details: error.message });
+  }
+});
+
+// Get movies for a DJ with series info
+apiRouter.get('/djs/:djId/movies', async (req, res) => {
+  try {
+    const djId = req.params.djId;
+    const { sort = 'latest' } = req.query;
+    
+    // Get DJ name
+    const djResult = await db.query('SELECT name FROM djs WHERE id = $1', [djId]);
+    if (djResult.rows.length === 0) {
+      return res.status(404).json({ error: 'DJ not found' });
+    }
+    
+    const djName = djResult.rows[0].name;
+    
+    let query = `
+      SELECT DISTINCT ON (m.id) m.*, t.telegram_file_id,
+        (SELECT array_agg(s.title) 
+         FROM series_movies sm 
+         JOIN series s ON sm.series_id = s.id 
+         WHERE sm.movie_id = m.id) as series_titles
+      FROM movies m 
+      LEFT JOIN thumbnails t ON m.id = t.movie_id 
+      WHERE m.dj_name = $1
+    `;
+    const params = [djName];
+    
+    if (sort === 'popular') {
+      query += ' ORDER BY m.id, m.views DESC';
+    } else {
+      query += ' ORDER BY m.id, m.created_at DESC';
+    }
+    
+    const result = await db.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] DJ_MOVIES_ERROR:`, error);
+    res.status(500).json({ error: 'Database error', details: error.message });
+  }
+});
+
 // Friendly GET handler for /upload to prevent 404s
 apiRouter.get('/upload', (req, res) => {
     res.json({ 
@@ -499,7 +882,14 @@ apiRouter.get('/upload', (req, res) => {
 apiRouter.get('/movies', async (req, res) => {
     try {
         const result = await db.query(
-            'SELECT m.*, t.telegram_file_id FROM movies m LEFT JOIN thumbnails t ON m.id = t.movie_id ORDER BY m.created_at DESC'
+            `SELECT DISTINCT ON (m.id) m.*, t.telegram_file_id,
+              (SELECT array_agg(s.title) 
+               FROM series_movies sm 
+               JOIN series s ON sm.series_id = s.id 
+               WHERE sm.movie_id = m.id) as series_titles
+            FROM movies m 
+            LEFT JOIN thumbnails t ON m.id = t.movie_id 
+            ORDER BY m.id, m.created_at DESC`
         );
         res.json(result.rows);
     } catch (error) {
@@ -512,7 +902,15 @@ apiRouter.get('/movies', async (req, res) => {
 apiRouter.get('/movies/publisher/:name', async (req, res) => {
     try {
         const result = await db.query(
-            'SELECT m.*, t.telegram_file_id FROM movies m LEFT JOIN thumbnails t ON m.id = t.movie_id WHERE m.publisher_name = $1 ORDER BY m.created_at DESC', [req.params.name]
+            `SELECT DISTINCT ON (m.id) m.*, t.telegram_file_id,
+              (SELECT array_agg(s.title) 
+               FROM series_movies sm 
+               JOIN series s ON sm.series_id = s.id 
+               WHERE sm.movie_id = m.id) as series_titles
+            FROM movies m 
+            LEFT JOIN thumbnails t ON m.id = t.movie_id 
+            WHERE m.publisher_name = $1 
+            ORDER BY m.id, m.created_at DESC`, [req.params.name]
         );
         res.json(result.rows);
     } catch (error) {
