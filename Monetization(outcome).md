@@ -4,18 +4,28 @@ The strategy has two sides: viewer revenue + creator rewards.
 
 1. Free users — Ads
 
-VDJ Movies remains free to watch, with advertising supporting the platform.
+🎬 VDJ Movies — Free User Monetization
 
-The initial idea was approximately 5 ads per day for free users, while avoiding excessive interruption to the actual movie experience.
+Free users can watch movies without ads interrupting playback.
 
-Possible ad formats:
+At the Watch button before entering the landscape/fullscreen player, the button can appear as 🎁 Watch.
 
-Banner/display ads
+Tapping 🎁 Watch means the user voluntarily watches a rewarded ad.
 
-Short video ads
+Completing that ad gives the user 45 minutes of ad-free viewing access.
 
-Ads between content rather than constantly interrupting playback
+During those 45 minutes, the user can freely watch any number of movies without another ad.
 
+The 45-minute period is simply the duration of the ad-free reward window. It does NOT mean an ad will appear after 45 minutes.
+
+While the reward is active, the Watch button shows ✅ Watch instead of 🎁.
+
+Once the window has expired, the next time the user wants to start watching, 🎁 Watch can become available again.
+
+VDJ controls when and where the 🎁 Watch option appears, rather than attaching a rewarded ad to every individual movie.
+
+
+Core idea: the user isn't watching an ad for a movie(even if that ad will be played when the user is opening a movie); they're watching an ad to earn a period of ad-free VDJ viewing. 😜
 
 2. Premium — Ad-free subscriptions
 
