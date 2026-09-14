@@ -10,7 +10,7 @@ Free users can watch movies without ads interrupting playback.
 
 At the Watch button before entering the landscape/fullscreen player, the button can appear as 🎁 Watch.
 
-Tapping 🎁 Watch means the user voluntarily watches a rewarded ad.
+Tapping 🎁 Watch means the user voluntarily watches a 3 rewarded ad.
 
 Completing that ad gives the user 45 minutes of ad-free viewing access.
 
