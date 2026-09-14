@@ -8,9 +8,9 @@ The strategy has two sides: viewer revenue + creator rewards.
 
 Free users can watch movies without ads interrupting playback.
 
-At the Watch button before entering the landscape/fullscreen player, the button can appear as 🎁 Watch.
+At the Watch button before entering the landscape/fullscreen player, the button can appear as "🎁 Play".
 
-Tapping 🎁 Watch means the user voluntarily watches a 3 rewarded ad.
+Tapping "🎁 Play" means the user voluntarily watches a 3 rewarded ad.
 
 Completing that ad gives the user 45 minutes of ad-free viewing access.
 
@@ -18,11 +18,11 @@ During those 45 minutes(which tiered on user account not phone storage), the use
 
 The 45-minute period is simply the duration of the ad-free reward window. It does NOT mean an ad will appear after 45 minutes.
 
-While the reward is active, the Watch button shows ✅ Watch instead of 🎁.
+While the reward is active, the Watch button shows "✅" play instead of "🎁".
 
-Once the window has expired, the next time the user wants to start watching, 🎁 Watch can become available again.
+Once the window has expired, the next time the user wants to start watching, "🎁 play" can become available again.
 
-VDJ controls when and where the 🎁 Watch option appears, rather than attaching a rewarded ad to every individual movie.
+VDJ controls when and where the "🎁 play" option appears, rather than attaching a rewarded ad to every individual movie.
 
 
 Core idea: the user isn't watching an ad for a movie(even if that ad will be played when the user is opening a movie); they're watching an ad to earn a period of ad-free VDJ viewing. 😜
