@@ -95,7 +95,7 @@ The other 50% is distributed to creators.
 
 Creators are ranked using qualified watch time, rather than simply raw views.
 
-If there are 10,000 eligible creators:
+If there are 10,000 eligible creators(uploaders):
 
 Top 30% = 3,000 creators
 
