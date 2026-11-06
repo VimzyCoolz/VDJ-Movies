@@ -637,13 +637,20 @@ const MovieCard = ({ movie, onClick, onDJClick }) => {
   );
 };
 
-const GenreRow = ({ title, movies, onMovieClick }) => (
+const GenreRow = ({ title, movies, onMovieClick, onSeeMore }) => (
   <div className="flex flex-col gap-3 py-4">
     <div className="flex items-center justify-between px-4">
       <h2 className="text-lg font-bold flex items-center gap-2">
         {title}
       </h2>
-      <ChevronRight size={20} className="text-gray-500" />
+      {movies.length > 0 && (
+        <button
+          onClick={() => onSeeMore && onSeeMore(title)}
+          className="text-[11px] font-black text-gold uppercase tracking-widest hover:text-gold/70 transition-colors"
+        >
+          See more
+        </button>
+      )}
     </div>
     <div className="flex gap-3 overflow-x-auto px-4 no-scrollbar scroll-smooth">
       {movies.map(movie => (
@@ -933,8 +940,10 @@ const HomeScreen = ({ onMovieClick, onSeriesClick }) => {
                   <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest">
                     {searchQuery ? `Search Results (${filteredMovies.filter(m => !m.series_titles || m.series_titles.length === 0).length})` : `${selectedGenre} (${filteredMovies.filter(m => !m.series_titles || m.series_titles.length === 0).length})`}
                   </h2>
-                  {searchQuery && (
+                  {searchQuery ? (
                     <button onClick={() => setSearchQuery('')} className="text-[10px] font-black text-gold uppercase tracking-widest">Clear</button>
+                  ) : (
+                    <button onClick={() => setSelectedGenre('All')} className="text-[10px] font-black text-gold uppercase tracking-widest">← All genres</button>
                   )}
                 </div>
                 {isFuzzyMatch && (
@@ -944,7 +953,7 @@ const HomeScreen = ({ onMovieClick, onSeriesClick }) => {
                   </div>
                 )}
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className={`grid gap-4 ${searchQuery ? 'grid-cols-2 md:grid-cols-3' : 'grid-cols-3'}`}>
                 {filteredMovies.filter(m => !m.series_titles || m.series_titles.length === 0).map(movie => (
                   <MovieCard key={movie.id} movie={movie} onClick={onMovieClick} />
                 ))}
@@ -986,11 +995,11 @@ const HomeScreen = ({ onMovieClick, onSeriesClick }) => {
                   </div>
                 </div>
               )}
-              <GenreRow title="Action" movies={getMoviesByGenre('Action')} onMovieClick={onMovieClick} />
-              <GenreRow title="Kihindi" movies={getMoviesByGenre('Kihindi')} onMovieClick={onMovieClick} />
-              <GenreRow title="Comedy" movies={getMoviesByGenre('Comedy')} onMovieClick={onMovieClick} />
-              <GenreRow title="Horror" movies={getMoviesByGenre('Horror')} onMovieClick={onMovieClick} />
-              <GenreRow title="Sci-Fi" movies={getMoviesByGenre('Sci-Fi')} onMovieClick={onMovieClick} />
+              <GenreRow title="Action" movies={getMoviesByGenre('Action')} onMovieClick={onMovieClick} onSeeMore={setSelectedGenre} />
+              <GenreRow title="Kihindi" movies={getMoviesByGenre('Kihindi')} onMovieClick={onMovieClick} onSeeMore={setSelectedGenre} />
+              <GenreRow title="Comedy" movies={getMoviesByGenre('Comedy')} onMovieClick={onMovieClick} onSeeMore={setSelectedGenre} />
+              <GenreRow title="Horror" movies={getMoviesByGenre('Horror')} onMovieClick={onMovieClick} onSeeMore={setSelectedGenre} />
+              <GenreRow title="Sci-Fi" movies={getMoviesByGenre('Sci-Fi')} onMovieClick={onMovieClick} onSeeMore={setSelectedGenre} />
             </>
           )}
         </>
