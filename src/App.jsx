@@ -719,7 +719,15 @@ const HomeScreen = ({ onMovieClick, onSeriesClick }) => {
 
   const getMoviesByGenre = (genre) => {
     if (!Array.isArray(filteredMovies)) return [];
-    return filteredMovies.filter(m => m.genre === genre && (!m.series_titles || m.series_titles.length === 0));
+    return filteredMovies
+      .filter(m => m.genre === genre && (!m.series_titles || m.series_titles.length === 0))
+      // Sort latest uploaded first (fall back to highest id for ties/missing dates)
+      .sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        if (dateB !== dateA) return dateB - dateA;
+        return (Number(b.id) || 0) - (Number(a.id) || 0);
+      });
   };
 
   const handleSuggestionClick = (query) => {
