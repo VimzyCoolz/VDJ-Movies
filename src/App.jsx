@@ -370,12 +370,14 @@ const MovieBottomSheet = ({ movie, isOpen, onClose, onFullscreen, user }) => {
   const navigate = useNavigate();
   const [started, setStarted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const videoRef = useRef(null);
 
   // Reset inline playback whenever the sheet closes or a new movie opens
   useEffect(() => {
     setStarted(false);
     setIsPlaying(false);
+    setPreviewLoading(false);
   }, [movie?.id, isOpen]);
 
   // Count views for inline playback without forcing fullscreen
@@ -404,6 +406,7 @@ const MovieBottomSheet = ({ movie, isOpen, onClose, onFullscreen, user }) => {
       // Mount the inline player; autoPlay takes over from the user gesture
       setStarted(true);
       setIsPlaying(true);
+      setPreviewLoading(true);
       return;
     }
     const video = videoRef.current;
@@ -459,7 +462,21 @@ const MovieBottomSheet = ({ movie, isOpen, onClose, onFullscreen, user }) => {
               autoPlay
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
+              onLoadStart={() => setPreviewLoading(true)}
+              onWaiting={() => setPreviewLoading(true)}
+              onPlaying={() => setPreviewLoading(false)}
+              onError={() => setPreviewLoading(false)}
             />
+          )}
+
+          {/* Loading Overlay */}
+          {started && previewLoading && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[5]">
+              <div className="flex flex-col items-center gap-2">
+                <Loader2 size={40} className="text-gold animate-spin" />
+                <span className="text-[10px] font-black text-gold uppercase tracking-[0.3em] opacity-70">Loading...</span>
+              </div>
+            </div>
           )}
 
           <button
