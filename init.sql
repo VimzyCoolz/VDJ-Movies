@@ -1,6 +1,14 @@
 -- If you are updating an existing database, run these individually in  SQL Editor:eg
 -- ALTER TABLE movies ADD COLUMN IF NOT EXISTS dj_name TEXT NOT NULL DEFAULT 'Unknown';
 -- ALTER TABLE movies ADD COLUMN IF NOT EXISTS summary TEXT;
+--
+-- One-time backfill: rename movies already inside packs as "<pack title> <position>"
+-- (e.g. pack "Falcon" -> "Falcon 1", "Falcon 2"). Run once after deploying.
+-- UPDATE movies m
+-- SET title = s.title || ' ' || sm.order_in_series
+-- FROM series_movies sm
+-- JOIN series s ON sm.series_id = s.id
+-- WHERE sm.movie_id = m.id;
 CREATE TABLE IF NOT EXISTS heartbeats (
   id SERIAL PRIMARY KEY,
   ping_time timestamp with time zone DEFAULT NOW()

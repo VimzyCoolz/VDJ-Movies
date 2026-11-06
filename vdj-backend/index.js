@@ -694,6 +694,13 @@ apiRouter.post('/series/:seriesId/movies', async (req, res) => {
       [seriesId, movie_id, newOrder]
     );
 
+    // Name the movie after its pack and position (e.g. "Falcon 1", "Falcon 2")
+    const seriesResult = await db.query('SELECT title FROM series WHERE id = $1', [seriesId]);
+    const packTitle = seriesResult.rows[0]?.title;
+    if (packTitle) {
+      await db.query('UPDATE movies SET title = $1 WHERE id = $2', [`${packTitle} ${newOrder}`, movie_id]);
+    }
+
     // Update series updated_at
     await db.query('UPDATE series SET updated_at = NOW() WHERE id = $1', [seriesId]);
 
@@ -816,12 +823,29 @@ apiRouter.put('/series/:seriesId', async (req, res) => {
       return res.status(403).json({ error: 'Forbidden: You do not own this pack' });
     }
     
+    const oldTitle = seriesCheck.rows[0].title;
+    const newTitle = title || oldTitle;
+
     // Update series
     const result = await db.query(
       'UPDATE series SET title = $1, description = $2, updated_at = NOW() WHERE id = $3 RETURNING *',
-      [title || seriesCheck.rows[0].title, description, seriesId]
+      [newTitle, description, seriesId]
     );
-    
+
+    // Keep pack movies' default names in sync with the pack title without
+    // overwriting names the uploader has customised ("<old> <n>" -> "<new> <n>").
+    if (newTitle !== oldTitle) {
+      await db.query(
+        `UPDATE movies m
+         SET title = $1 || ' ' || sm.order_in_series
+         FROM series_movies sm
+         WHERE sm.movie_id = m.id
+           AND sm.series_id = $2
+           AND m.title = $3 || ' ' || sm.order_in_series`,
+        [newTitle, seriesId, oldTitle]
+      );
+    }
+
     res.json(result.rows[0]);
   } catch (error) {
     console.error(`[${new Date().toISOString()}] UPDATE_SERIES_ERROR:`, error);
@@ -982,6 +1006,55 @@ apiRouter.delete('/movies/:id', async (req, res) => {
     } catch (error) {
         console.error(`[${new Date().toISOString()}] DELETE_ERROR:`, error);
         res.status(500).json({ error: 'Failed to delete movie', details: error.message });
+    }
+});
+
+// Update a movie's details (pack owner or original publisher only)
+apiRouter.put('/movies/:id', async (req, res) => {
+    const movieId = req.params.id;
+    const { title, genre, summary, user_id } = req.body;
+
+    if (!user_id) {
+        return res.status(401).json({ error: 'Unauthorized: You must be logged in to edit a movie' });
+    }
+
+    try {
+        const movieResult = await db.query('SELECT * FROM movies WHERE id = $1', [movieId]);
+        if (movieResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Movie not found' });
+        }
+        const movie = movieResult.rows[0];
+
+        // Authorize if the user published the movie, or owns a pack containing it
+        const userResult = await db.query('SELECT username FROM users WHERE id = $1', [user_id]);
+        let authorized = userResult.rows[0]?.username && movie.publisher_name === userResult.rows[0].username;
+        if (!authorized) {
+            const ownerCheck = await db.query(
+                `SELECT 1 FROM series_movies sm
+                 JOIN series s ON sm.series_id = s.id
+                 WHERE sm.movie_id = $1 AND s.user_id = $2 LIMIT 1`,
+                [movieId, user_id]
+            );
+            authorized = ownerCheck.rows.length > 0;
+        }
+        if (!authorized) {
+            return res.status(403).json({ error: 'Forbidden: You do not own this movie' });
+        }
+
+        const result = await db.query(
+            `UPDATE movies
+             SET title = COALESCE($1, title),
+                 genre = COALESCE($2, genre),
+                 summary = COALESCE($3, summary)
+             WHERE id = $4 RETURNING *`,
+            [title, genre, summary, movieId]
+        );
+
+        console.log(`[${new Date().toISOString()}] MOVIE_UPDATED: ID ${movieId} by user ${user_id}`);
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] UPDATE_MOVIE_ERROR:`, error);
+        res.status(500).json({ error: 'Failed to update movie', details: error.message });
     }
 });
 
