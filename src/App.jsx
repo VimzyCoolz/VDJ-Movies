@@ -42,6 +42,7 @@ const VideoPlayer = ({ movie, onClose, user }) => {
   const [watchedTime, setWatchedTime] = useState(0);
   const [viewRegistered, setViewRegistered] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const controlsTimeoutRef = useRef(null);
 
   useEffect(() => {
@@ -249,7 +250,21 @@ const VideoPlayer = ({ movie, onClose, user }) => {
         autoPlay
         onClick={handleVideoClick}
         onMouseMove={resetControlsTimeout}
+        onLoadStart={() => setIsLoading(true)}
+        onWaiting={() => setIsLoading(true)}
+        onPlaying={() => setIsLoading(false)}
+        onError={() => setIsLoading(false)}
       />
+
+      {/* Loading Overlay */}
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[105]">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 size={56} className="text-gold animate-spin" />
+            <span className="text-[10px] font-black text-gold uppercase tracking-[0.3em] opacity-70">Loading...</span>
+          </div>
+        </div>
+      )}
 
       {/* Close Button */}
       {showControls && (
