@@ -725,6 +725,7 @@ const HomeScreen = ({ onMovieClick, onSeriesClick }) => {
   const [trendingIndex, setTrendingIndex] = useState(0);
   const [isFuzzyMatch, setIsFuzzyMatch] = useState(false);
   const [selectedGenre, setSelectedGenre] = useState('All');
+  const [showAllPacks, setShowAllPacks] = useState(false);
   const searchInputRef = useRef(null);
   
   const genres = ['All', 'Action', 'Kihindi', 'Comedy', 'Horror', 'Sci-Fi'];
@@ -933,7 +934,40 @@ const HomeScreen = ({ onMovieClick, onSeriesClick }) => {
         </div>
       ) : (
         <>
-          {searchQuery || selectedGenre !== 'All' ? (
+          {showAllPacks && !searchQuery && selectedGenre === 'All' ? (
+            <div className="px-4 py-2 flex flex-col gap-6 animate-slide-up">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest">
+                  Packs ({series.length})
+                </h2>
+                <button onClick={() => setShowAllPacks(false)} className="text-[10px] font-black text-gold uppercase tracking-widest">← Back</button>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                {series.map(s => (
+                  <div
+                    key={s.id}
+                    className="aspect-[2/3] bg-gray-900 rounded-md overflow-hidden relative group cursor-pointer"
+                    onClick={() => onSeriesClick(s)}
+                  >
+                    <img
+                      src={s.thumbnail_telegram_file_id ? `${API_BASE_URL}/thumbnail/${s.thumbnail_telegram_file_id}` : `https://picsum.photos/seed/${s.id}/300/450`}
+                      alt={s.title}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                    />
+                    <div className="absolute top-2 right-2 bg-gold text-black text-[8px] font-bold px-2 py-1 rounded-full">
+                      {s.movie_count} movies
+                    </div>
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <Play fill="white" size={32} />
+                    </div>
+                    <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black to-transparent">
+                      <p className="text-[10px] font-bold truncate">{s.title}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : searchQuery || selectedGenre !== 'All' ? (
             <div className="px-4 py-2 flex flex-col gap-6 animate-slide-up">
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between">
@@ -967,7 +1001,12 @@ const HomeScreen = ({ onMovieClick, onSeriesClick }) => {
                     <h2 className="text-lg font-bold flex items-center gap-2">
                       Packs
                     </h2>
-                    <ChevronRight size={20} className="text-gray-500" />
+                    <button
+                      onClick={() => setShowAllPacks(true)}
+                      className="text-[11px] font-black text-gold uppercase tracking-widest hover:text-gold/70 transition-colors"
+                    >
+                      See more
+                    </button>
                   </div>
                   <div className="flex gap-3 overflow-x-auto px-4 no-scrollbar scroll-smooth">
                     {series.map(s => (
