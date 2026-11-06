@@ -1080,6 +1080,16 @@ const UploadScreen = ({ user }) => {
   const canvasRef = useRef(null);
   const [videoUrl, setVideoUrl] = useState(null);
   const [currentTime, setCurrentTime] = useState(0);
+  const location = useLocation();
+
+  // Pre-select a pack when arriving from a pack's "Upload another Movie" button
+  useEffect(() => {
+    const pack = location.state?.pack;
+    if (pack) {
+      setUploadType('pack');
+      setSelectedSeries(pack);
+    }
+  }, [location.state]);
 
   // Fetch user's series
   useEffect(() => {
@@ -1418,6 +1428,22 @@ const UploadScreen = ({ user }) => {
               + Create New Pack
             </button>
           </div>
+
+          {selectedSeries && !userSeries.some(s => s.id === selectedSeries.id) && (
+            <div className="p-3 rounded-xl bg-gold/20 border border-gold/50">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-bold text-white">{selectedSeries.title}</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSeries(null)}
+                  className="text-[10px] text-gray-400"
+                >
+                  Change
+                </button>
+              </div>
+              <p className="text-[10px] text-gold mt-1">New movies will be added to this pack</p>
+            </div>
+          )}
 
           {userSeries.length > 0 && (
             <div className="flex flex-col gap-2">
@@ -2338,6 +2364,18 @@ const SeriesDetailScreen = ({ series, onMovieClick, user, onBack }) => {
               )}
               <p className="text-gray-500 text-sm mt-1">{seriesData.movies?.length || 0} movies</p>
             </div>
+          )}
+
+          {isOwner && !isEditing && (
+            <button
+              onClick={() => navigate('/upload', {
+                state: { pack: { id: seriesData.id, title: seriesData.title, description: seriesData.description } }
+              })}
+              className="mt-4 w-full bg-gold text-black font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all"
+            >
+              <Upload size={18} />
+              Upload another Movie on this pack
+            </button>
           )}
         </div>
         <div className="flex flex-col gap-4">
