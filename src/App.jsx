@@ -329,34 +329,125 @@ const VideoPlayer = ({ movie, onClose, user }) => {
   );
 };
 
-const MovieBottomSheet = ({ movie, isOpen, onClose, onPlay }) => {
+// Registers a movie view once per user/device (same ~37.5% watched rule as the player)
+const registerMovieView = async (movie, user) => {
+  let userId = user?.username;
+  if (!userId) {
+    userId = localStorage.getItem('vdj_anon_id');
+    if (!userId) {
+      userId = `anon_${Math.random().toString(36).substr(2, 9)}`;
+      localStorage.setItem('vdj_anon_id', userId);
+    }
+  }
+
+  const viewedKey = `viewed_${movie.id}_${userId}`;
+  if (localStorage.getItem(viewedKey)) return;
+  localStorage.setItem(viewedKey, 'true');
+
+  try {
+    await axios.post(`${API_BASE_URL}/movies/${movie.id}/view`, { userId });
+  } catch (err) {
+    console.error('Failed to register view:', err);
+  }
+};
+
+const MovieBottomSheet = ({ movie, isOpen, onClose, onFullscreen, user }) => {
   const navigate = useNavigate();
+  const [started, setStarted] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const videoRef = useRef(null);
+
+  // Reset inline playback whenever the sheet closes or a new movie opens
+  useEffect(() => {
+    setStarted(false);
+    setIsPlaying(false);
+  }, [movie?.id, isOpen]);
+
+  // Count views for inline playback without forcing fullscreen
+  useEffect(() => {
+    if (!started || !movie) return;
+    const video = videoRef.current;
+    if (!video) return;
+
+    let watched = 0;
+    const interval = setInterval(() => {
+      if (video.paused || video.seeking || !video.duration) return;
+      watched += 1;
+      if (watched >= video.duration * 0.375) {
+        clearInterval(interval);
+        registerMovieView(movie, user);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [started, movie, user]);
+
   if (!isOpen || !movie) return null;
+
+  const togglePlay = () => {
+    if (!started) {
+      // Mount the inline player; autoPlay takes over from the user gesture
+      setStarted(true);
+      setIsPlaying(true);
+      return;
+    }
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) {
+      video.play().catch(() => {});
+    } else {
+      video.pause();
+    }
+  };
+
+  const goToDj = (e) => {
+    e.stopPropagation();
+    onClose();
+    navigate(`/dj/${encodeURIComponent(movie.dj_name)}`);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
       {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm" 
+      <div
+        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
         onClick={onClose}
       />
-      
+
       {/* Sheet */}
-      <div className="relative w-full max-w-md bg-[#121212] rounded-t-[32px] overflow-hidden flex flex-col h-[70vh] shadow-2xl animate-slide-up">
-        {/* Banner */}
-        <div className="relative w-full aspect-video cursor-pointer" onClick={() => onPlay(movie)}>
-          <img 
-            src={movie.telegram_file_id ? `${API_BASE_URL}/thumbnail/${movie.id}` : movie.thumbnail_url || movie.thumbnail || `https://picsum.photos/seed/${movie.id}/600/340`} 
-            alt={movie.title}
-            className="w-full h-full object-cover"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#121212] via-transparent to-transparent" />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="bg-black/50 rounded-full p-4">
-              <Play size={48} fill="white" />
-            </div>
-          </div>
-          <button 
+      <div className="relative w-full max-w-md bg-[#121212] rounded-t-[32px] overflow-hidden flex flex-col h-[85vh] shadow-2xl animate-slide-up">
+        {/* 1. Movie preview (16:9, defaults to the movie thumbnail) */}
+        <div
+          className="relative w-full aspect-video bg-black flex-shrink-0 cursor-pointer"
+          onClick={togglePlay}
+        >
+          {!started ? (
+            <>
+              <img
+                src={movie.telegram_file_id ? `${API_BASE_URL}/thumbnail/${movie.id}` : movie.thumbnail_url || movie.thumbnail || `https://picsum.photos/seed/${movie.id}/600/340`}
+                alt={movie.title}
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#121212] via-transparent to-transparent" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="bg-black/50 rounded-full p-4">
+                  <Play size={48} fill="white" />
+                </div>
+              </div>
+            </>
+          ) : (
+            <video
+              ref={videoRef}
+              src={`${API_BASE_URL}/stream/${movie.telegram_message_id}`}
+              className="w-full h-full object-contain bg-black"
+              playsInline
+              autoPlay
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
+            />
+          )}
+
+          <button
             onClick={(e) => {
               e.stopPropagation();
               onClose();
@@ -368,70 +459,39 @@ const MovieBottomSheet = ({ movie, isOpen, onClose, onPlay }) => {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-6 pb-6 -mt-8 relative z-10">
-          <h2 className="text-2xl font-black text-white leading-tight mb-1">
-            {movie.title} – <button 
-              className="text-gold hover:text-gold/80 transition-colors"
-              onClick={(e) => {
-                e.stopPropagation();
-                onClose();
-                navigate(`/dj/${encodeURIComponent(movie.dj_name)}`);
-              }}
-            >
-              {movie.dj_name}
-            </button>
-          </h2>
-          
-          <div className="flex items-center gap-3 text-xs font-bold text-gray-400 mb-4">
-            <span className="flex items-center gap-1">{movie.views || 0} WATCHED</span>
-            <span className="w-1 h-1 bg-gray-600 rounded-full" />
-            <span className="text-gold uppercase tracking-widest">{movie.genre}</span>
-            <span className="w-1 h-1 bg-gray-600 rounded-full" />
-            <span>{movie.size || '205 MB'}</span>
-          </div>
-
-          <p className="text-sm text-gray-300 leading-relaxed mb-8">
-            {movie.summary || "No description available for this movie."}
-            <br />
-            <div className="flex flex-col gap-1 mt-4">
-              <span className="text-[10px] text-gray-500 uppercase font-bold flex items-center gap-1">
-                Narrator: <button 
-                  className="text-gray-300 hover:text-gold transition-colors"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onClose();
-                    navigate(`/dj/${encodeURIComponent(movie.dj_name)}`);
-                  }}
-                >
-                  {movie.dj_name}
-                </button>
-              </span>
-              <span className="text-[10px] text-gray-500 uppercase font-bold flex items-center gap-1">
-                VDJ Publisher: <span className="text-gold">{movie.publisher_name || 'Anonymous'}</span>
-              </span>
-            </div>
-          </p>
-
-          {/* Action Buttons */}
+        <div className="flex-1 overflow-y-auto px-6 pt-5 pb-8">
+          {/* 2. Movie actions */}
           <div className="flex flex-col gap-3">
-            <button 
-              onClick={() => onPlay(movie)}
+            <button
+              onClick={togglePlay}
               className="w-full bg-gold hover:bg-[#e6b800] text-black font-black py-4 rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-gold/20"
             >
-              <Play size={24} fill="black" />
-              PLAY
+              {isPlaying ? <Pause size={24} fill="black" /> : <Play size={24} fill="black" />}
+              {isPlaying ? 'PAUSE' : 'PLAY'}
             </button>
-            
+
             <div className="flex gap-3">
-              <button 
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  videoRef.current?.pause();
+                  onFullscreen(movie);
+                }}
+                className="flex-1 bg-[#252525] text-gray-300 font-bold py-3 rounded-xl flex items-center justify-center gap-2 text-sm active:scale-95 transition-all"
+              >
+                <Maximize size={18} />
+                Fullscreen
+              </button>
+
+              <button
                 onClick={() => console.log('Download link requested')}
                 className="flex-1 bg-[#252525] text-gray-300 font-bold py-3 rounded-xl flex items-center justify-center gap-2 text-sm active:scale-95 transition-all"
               >
                 <DownloadCloud size={18} />
                 Download
               </button>
-              
-              <button 
+
+              <button
                 onClick={() => console.log('Report tool requested')}
                 className="w-[30%] border border-gray-800 text-gray-500 font-bold py-3 rounded-xl flex items-center justify-center gap-2 text-[10px] active:scale-95 transition-all"
               >
@@ -439,6 +499,34 @@ const MovieBottomSheet = ({ movie, isOpen, onClose, onPlay }) => {
                 REPORT
               </button>
             </div>
+          </div>
+
+          {/* 3. DJ name, uploader and movie summary */}
+          <div className="mt-6">
+            <h2 className="text-2xl font-black text-white leading-tight mb-1">
+              {movie.title}
+            </h2>
+
+            <div className="flex items-center gap-3 text-xs font-bold text-gray-400 mb-4">
+              <span className="flex items-center gap-1">{movie.views || 0} WATCHED</span>
+              <span className="w-1 h-1 bg-gray-600 rounded-full" />
+              <span className="text-gold uppercase tracking-widest">{movie.genre}</span>
+              <span className="w-1 h-1 bg-gray-600 rounded-full" />
+              <span>{movie.size || '205 MB'}</span>
+            </div>
+
+            <div className="flex flex-col gap-1 mb-4">
+              <span className="text-[10px] text-gray-500 uppercase font-bold flex items-center gap-1">
+                DJ Name: <button className="text-gray-300 hover:text-gold transition-colors" onClick={goToDj}>{movie.dj_name}</button>
+              </span>
+              <span className="text-[10px] text-gray-500 uppercase font-bold flex items-center gap-1">
+                Uploader: <span className="text-gold">{movie.publisher_name || 'Anonymous'}</span>
+              </span>
+            </div>
+
+            <p className="text-sm text-gray-300 leading-relaxed">
+              {movie.summary || 'No description available for this movie.'}
+            </p>
           </div>
         </div>
       </div>
@@ -2305,10 +2393,8 @@ const handleSeriesClick = (series) => {
   setSelectedSeries(series);
 };
 
-const handlePlayMovie = (movie) => {
-  // Logic for Reward Ad would go here
-  console.log("Triggering Rewarded Ad for movie:", movie.title);
-  setIsSheetOpen(false);
+const handleFullscreen = (movie) => {
+  // Open the fullscreen player on top of the description sheet
   setPlayingMovie(movie);
 };
 
@@ -2396,7 +2482,8 @@ const handlePlayMovie = (movie) => {
         movie={selectedMovie} 
         isOpen={isSheetOpen} 
         onClose={() => setIsSheetOpen(false)}
-        onPlay={handlePlayMovie}
+        onFullscreen={handleFullscreen}
+        user={user}
       />
 
       {playingMovie && (
