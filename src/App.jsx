@@ -2220,7 +2220,14 @@ const SeriesDetailScreen = ({ series, onMovieClick, user, onBack }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editingMovieId, setEditingMovieId] = useState(null);
+  const [movieTitle, setMovieTitle] = useState('');
+  const [movieGenre, setMovieGenre] = useState('Action');
+  const [movieSummary, setMovieSummary] = useState('');
   const navigate = useNavigate();
+
+  const genres = ['Action', 'Kihindi', 'Comedy', 'Horror', 'Sci-Fi'];
+  const isOwner = !!(user && seriesData && seriesData.user_id === user.id);
 
   useEffect(() => {
     const fetchSeries = async () => {
@@ -2243,10 +2250,43 @@ const SeriesDetailScreen = ({ series, onMovieClick, user, onBack }) => {
         description: editDescription,
         user_id: user?.id
       });
-      setSeriesData(prev => ({ ...prev, title: editTitle, description: editDescription }));
+      // Mirror the backend: movies still using their default name follow the new pack title
+      setSeriesData(prev => ({
+        ...prev,
+        title: editTitle,
+        description: editDescription,
+        movies: prev.movies.map(m =>
+          m.title === `${prev.title} ${m.order_in_series}` ? { ...m, title: `${editTitle} ${m.order_in_series}` } : m
+        )
+      }));
       setIsEditing(false);
     } catch (error) {
       console.error('Failed to update series:', error);
+    }
+  };
+
+  const startEditMovie = (movie) => {
+    setEditingMovieId(movie.id);
+    setMovieTitle(movie.title || '');
+    setMovieGenre(movie.genre || 'Action');
+    setMovieSummary(movie.summary || '');
+  };
+
+  const saveMovie = async () => {
+    try {
+      const response = await axios.put(`${API_BASE_URL}/movies/${editingMovieId}`, {
+        title: movieTitle,
+        genre: movieGenre,
+        summary: movieSummary,
+        user_id: user?.id
+      });
+      setSeriesData(prev => ({
+        ...prev,
+        movies: prev.movies.map(m => (m.id === editingMovieId ? { ...m, ...response.data } : m))
+      }));
+      setEditingMovieId(null);
+    } catch (error) {
+      console.error('Failed to update movie:', error);
     }
   };
 
@@ -2287,7 +2327,7 @@ const SeriesDetailScreen = ({ series, onMovieClick, user, onBack }) => {
             <div>
               <div className="flex items-center justify-between">
                 <h1 className="text-3xl font-bold text-white">{seriesData.title}</h1>
-                {user && seriesData.user_id === user.id && (
+                {isOwner && (
                   <button onClick={() => setIsEditing(true)} className="text-gold font-bold text-sm">
                     Edit
                   </button>
@@ -2304,21 +2344,70 @@ const SeriesDetailScreen = ({ series, onMovieClick, user, onBack }) => {
           {seriesData.movies?.map((movie, index) => (
             <div
               key={movie.id}
-              className="flex gap-4 bg-[#121212] p-4 rounded-2xl border border-white/5 active:bg-[#1a1a1a] cursor-pointer"
-              onClick={() => onMovieClick(movie)}
+              className="bg-[#121212] p-4 rounded-2xl border border-white/5"
             >
-              <div className="text-4xl font-bold text-gold opacity-50">{index + 1}</div>
-              <div className="w-24 h-14 bg-gray-900 rounded-lg overflow-hidden flex-shrink-0">
-                <img
-                  src={movie.telegram_file_id ? `${API_BASE_URL}/thumbnail/${movie.id}` : movie.thumbnail_url || `https://picsum.photos/seed/${movie.id}/120/68`}
-                  alt={movie.title}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-white font-bold truncate">{movie.title}</h3>
-                <p className="text-gray-500 text-sm">{movie.dj_name}</p>
-              </div>
+              {editingMovieId === movie.id ? (
+                <div className="flex flex-col gap-3">
+                  <input
+                    type="text"
+                    value={movieTitle}
+                    onChange={(e) => setMovieTitle(e.target.value)}
+                    placeholder="Movie title"
+                    className="bg-[#1e1e1e] border border-[#333] rounded-xl p-3 text-white font-bold"
+                  />
+                  <select
+                    value={movieGenre}
+                    onChange={(e) => setMovieGenre(e.target.value)}
+                    className="bg-[#1e1e1e] border border-[#333] rounded-xl p-3 text-white"
+                  >
+                    {genres.map(g => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                  <textarea
+                    value={movieSummary}
+                    onChange={(e) => setMovieSummary(e.target.value)}
+                    placeholder="Summary"
+                    rows={3}
+                    className="bg-[#1e1e1e] border border-[#333] rounded-xl p-3 text-gray-300 resize-none"
+                  />
+                  <div className="flex gap-3">
+                    <button onClick={saveMovie} className="bg-gold text-black font-bold py-2 px-6 rounded-xl">
+                      Save
+                    </button>
+                    <button onClick={() => setEditingMovieId(null)} className="bg-[#333] text-white font-bold py-2 px-6 rounded-xl">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="flex gap-4 active:opacity-80 cursor-pointer"
+                  onClick={() => onMovieClick(movie)}
+                >
+                  <div className="text-4xl font-bold text-gold opacity-50">{index + 1}</div>
+                  <div className="w-24 h-14 bg-gray-900 rounded-lg overflow-hidden flex-shrink-0">
+                    <img
+                      src={movie.telegram_file_id ? `${API_BASE_URL}/thumbnail/${movie.id}` : movie.thumbnail_url || `https://picsum.photos/seed/${movie.id}/120/68`}
+                      alt={movie.title}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-white font-bold truncate">{movie.title}</h3>
+                    <p className="text-gray-500 text-sm">{movie.dj_name}</p>
+                  </div>
+                  {isOwner && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startEditMovie(movie);
+                      }}
+                      className="self-center text-gold font-bold text-xs"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
