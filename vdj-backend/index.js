@@ -882,14 +882,17 @@ apiRouter.get('/upload', (req, res) => {
 apiRouter.get('/movies', async (req, res) => {
     try {
         const result = await db.query(
-            `SELECT DISTINCT ON (m.id) m.*, t.telegram_file_id,
-              (SELECT array_agg(s.title) 
-               FROM series_movies sm 
-               JOIN series s ON sm.series_id = s.id 
-               WHERE sm.movie_id = m.id) as series_titles
-            FROM movies m 
-            LEFT JOIN thumbnails t ON m.id = t.movie_id 
-            ORDER BY m.id, m.created_at DESC`
+            `SELECT * FROM (
+              SELECT DISTINCT ON (m.id) m.*, t.telegram_file_id,
+                (SELECT array_agg(s.title) 
+                 FROM series_movies sm 
+                 JOIN series s ON sm.series_id = s.id 
+                 WHERE sm.movie_id = m.id) as series_titles
+              FROM movies m 
+              LEFT JOIN thumbnails t ON m.id = t.movie_id 
+              ORDER BY m.id
+            ) sub
+            ORDER BY sub.created_at DESC, sub.id DESC`
         );
         res.json(result.rows);
     } catch (error) {
