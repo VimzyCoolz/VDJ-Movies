@@ -95,13 +95,23 @@ body {
   transition: transform 0.3s ease;
 }
 
-/* Keep movie actions accessible while the detail content scrolls. This is
-   especially important when portrait videos make the details sheet feel tight. */
-.fixed.inset-0.z-50 > div[class*="max-w-md"] [class*="overflow-y-auto"] > div:last-child {
-  position: sticky;
+/* The detail sheet has a fixed-height scroll area followed by its action row.
+   Anchor that row to the sheet instead of relying on sticky positioning inside
+   the scroll container, which can place it below the visible area. */
+.fixed.inset-0.z-50 > div[class*="max-w-md"] > div[class*="overflow-y-auto"] {
+  position: static;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding-bottom: 11rem;
+}
+
+.fixed.inset-0.z-50 > div[class*="max-w-md"] > div[class*="overflow-y-auto"] > div:last-child {
+  position: absolute;
+  left: 0;
+  right: 0;
   bottom: 0;
   z-index: 20;
-  margin-inline: -1.5rem;
+  margin: 0;
   padding: 1rem 1.5rem max(1.5rem, env(safe-area-inset-bottom));
   background: linear-gradient(to bottom, rgb(18 18 18 / 0.92), #121212 1.5rem);
 }
