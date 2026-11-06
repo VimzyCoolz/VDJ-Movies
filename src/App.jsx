@@ -1115,7 +1115,6 @@ const UploadScreen = ({ user }) => {
   const [coverPreview, setCoverPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [cloudProgress, setCloudProgress] = useState(0);
   const [error, setError] = useState(null);
   const [coverMode, setCoverMode] = useState('upload'); // 'upload' or 'frame'
   const [uploadType, setUploadType] = useState('single'); // 'single' or 'pack'
@@ -1128,7 +1127,9 @@ const UploadScreen = ({ user }) => {
   const canvasRef = useRef(null);
   const [videoUrl, setVideoUrl] = useState(null);
   const [currentTime, setCurrentTime] = useState(0);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
   // Pre-select a pack when arriving from a pack's "Upload another Movie" button
   useEffect(() => {
@@ -1156,10 +1157,8 @@ const UploadScreen = ({ user }) => {
 
   const genres = ['Action', 'Kihindi', 'Comedy', 'Horror', 'Sci-Fi'];
 
-  // Calculate Overall Progress: 50% Step 1, 50% Step 2
-  const overallProgress = progress < 100 
-    ? Math.floor(progress / 2) 
-    : 50 + Math.floor(cloudProgress / 2);
+  // Overall progress reflects the real upload progress (finalizing shows 100%)
+  const overallProgress = progress;
 
   // Total progress for bulk upload
   const totalProgress = uploadQueue.length > 0 
@@ -1236,8 +1235,6 @@ const UploadScreen = ({ user }) => {
   // Upload a single file
   const uploadSingleFile = async (queueItem, seriesId = null) => {
     return new Promise(async (resolve, reject) => {
-      let cloudInterval = null;
-      
       try {
         const data = new FormData();
         data.append('dj_name', formData.dj_name);
@@ -1248,7 +1245,6 @@ const UploadScreen = ({ user }) => {
         data.append('publisher_name', user.username);
 
         setProgress(0);
-        setCloudProgress(0);
 
         const response = await axios.post(`${API_BASE_URL}/upload`, data, {
           headers: { 'Content-Type': 'multipart/form-data' },
@@ -1263,20 +1259,8 @@ const UploadScreen = ({ user }) => {
                 ? { ...item, progress: percentCompleted, status: 'uploading' }
                 : item
             ));
-
-            if (percentCompleted === 100 && !cloudInterval) {
-              cloudInterval = setInterval(() => {
-                setCloudProgress(prev => {
-                  if (prev >= 98) return 98;
-                  return prev + 1;
-                });
-              }, 1500); 
-            }
           }
         });
-
-        if (cloudInterval) clearInterval(cloudInterval);
-        setCloudProgress(100);
 
         // If we have a series, add this movie to it
         if (seriesId && response.data.success) {
@@ -1296,7 +1280,6 @@ const UploadScreen = ({ user }) => {
 
         resolve(response.data);
       } catch (error) {
-        if (cloudInterval) clearInterval(cloudInterval);
         setUploadQueue(prev => prev.map(item => 
           item.id === queueItem.id 
             ? { ...item, status: 'error' }
@@ -1324,7 +1307,24 @@ const UploadScreen = ({ user }) => {
     }
     
     setUploading(false);
-    window.location.href = '/'; 
+    setUploadSuccess(true);
+  };
+
+  const handleUploadAnother = () => {
+    setUploadSuccess(false);
+    setFormData({ dj_name: '', summary: '', genre: 'Action' });
+    setFile(null);
+    setFiles([]);
+    setUploadQueue([]);
+    setCurrentUploadIndex(0);
+    setCoverImage(null);
+    setCoverPreview(null);
+    setVideoUrl(null);
+    setProgress(0);
+    setError(null);
+    setCreatedSeriesId(null);
+    setNewSeriesTitle('');
+    setNewSeriesDescription('');
   };
 
   const handleSubmit = async (e) => {
@@ -1374,8 +1374,6 @@ const UploadScreen = ({ user }) => {
       // Single upload
       if (!file) return;
       
-      let cloudInterval = null;
-      
       try {
         const data = new FormData();
         data.append('dj_name', formData.dj_name);
@@ -1390,7 +1388,6 @@ const UploadScreen = ({ user }) => {
 
         setUploading(true);
         setProgress(0);
-        setCloudProgress(0);
 
         const response = await axios.post(`${API_BASE_URL}/upload`, data, {
           headers: { 'Content-Type': 'multipart/form-data' },
@@ -1398,28 +1395,11 @@ const UploadScreen = ({ user }) => {
           onUploadProgress: (progressEvent) => {
             const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
             setProgress(percentCompleted);
-
-            if (percentCompleted === 100 && !cloudInterval) {
-              cloudInterval = setInterval(() => {
-                setCloudProgress(prev => {
-                  if (prev >= 98) return 98;
-                  return prev + 1;
-                });
-              }, 1500); 
-            }
           }
         });
 
         if (response.data.success) {
-          if (cloudInterval) clearInterval(cloudInterval);
-          setCloudProgress(100);
-          setFormData({ dj_name: '', summary: '', genre: 'Action' });
-          setFile(null);
-          setCoverImage(null);
-          setCoverPreview(null);
-          setVideoUrl(null);
-          setProgress(0);
-          window.location.href = '/'; 
+          setUploadSuccess(true);
         }
       } catch (error) {
         console.error('Upload failed:', error);
@@ -1431,6 +1411,38 @@ const UploadScreen = ({ user }) => {
       }
     }
   };
+
+  if (uploadSuccess) {
+    return (
+      <div className="p-4 pb-20 flex flex-col items-center justify-center min-h-[70vh] text-center">
+        <div className="w-20 h-20 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center mb-6">
+          <CheckCircle2 size={40} className="text-green-500" />
+        </div>
+        <h1 className="text-2xl font-black text-white mb-2">Upload Successful</h1>
+        <p className="text-sm text-gray-400 mb-8 max-w-xs">
+          {uploadType === 'pack'
+            ? 'Your pack has been published successfully.'
+            : 'Your movie has been published successfully.'}
+        </p>
+        <div className="w-full max-w-xs flex flex-col gap-3">
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="bg-gold text-black font-black py-4 rounded-xl shadow-lg shadow-gold/20 hover:scale-[1.02] active:scale-95 transition-all"
+          >
+            BACK TO HOME
+          </button>
+          <button
+            type="button"
+            onClick={handleUploadAnother}
+            className="bg-[#252525] text-gray-300 font-bold py-4 rounded-xl hover:bg-[#333] active:scale-95 transition-all"
+          >
+            UPLOAD ANOTHER
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 pb-20">
@@ -1793,7 +1805,7 @@ const UploadScreen = ({ user }) => {
         {uploading && uploadType === 'single' && (
           <div className="flex flex-col gap-2 mt-2">
             <div className="flex justify-between text-[10px] font-black text-gold uppercase tracking-tighter">
-              <span>{progress < 100 ? `Step 1: Uplink (${progress}%)` : `Step 2: Syncing (${cloudProgress}%)`}</span>
+              <span>{progress < 100 ? `Step 1: Uplink (${progress}%)` : 'Finalizing'}</span>
               <span className="text-green-500">{overallProgress}% TOTAL</span>
             </div>
             <div className="h-2 bg-gray-800 rounded-full overflow-hidden relative">
@@ -1808,8 +1820,8 @@ const UploadScreen = ({ user }) => {
             </div>
             <p className="text-[10px] text-gray-500 italic text-center font-medium">
               {progress < 100 
-                ? 'Step 1 of 2: Sending files to our secure server...' 
-                : 'Step 2 of 2: Almost ready! Finalizing cloud storage sync...'}
+                ? 'Sending files to our secure server...' 
+                : 'Finalizing cloud storage sync...'}
             </p>
           </div>
         )}
