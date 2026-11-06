@@ -94,3 +94,14 @@ body {
 .movie-card {
   transition: transform 0.3s ease;
 }
+
+/* Keep movie actions accessible while the detail content scrolls. This is
+   especially important when portrait videos make the details sheet feel tight. */
+.fixed.inset-0.z-50 > div[class*="max-w-md"] [class*="overflow-y-auto"] > div:last-child {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  margin-inline: -1.5rem;
+  padding: 1rem 1.5rem max(1.5rem, env(safe-area-inset-bottom));
+  background: linear-gradient(to bottom, rgb(18 18 18 / 0.92), #121212 1.5rem);
+}
