@@ -6,12 +6,12 @@ import axios from 'axios';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5000/api' : '/api');
 
 // Record a play - fires the moment playback starts, in either the inline preview or the
-// fullscreen player. Every play raises the movie's view count and the publisher's reach.
-const recordPlay = (movie, user, watchedSeconds = 0) => {
-  if (!movie?.id) return;
+// fullscreen player. Reach and views are tied to registered users, and the backend
+// dedupes to one play per user per movie (preview + player count once).
+const recordPlay = (movie, user) => {
+  if (!movie?.id || user?.id === undefined || user?.id === null || user?.id === '') return;
   axios.post(`${API_BASE_URL}/movies/${movie.id}/view`, {
-    userId: user?.id,
-    watchedSeconds: Math.round(watchedSeconds),
+    userId: user.id,
   }).catch(() => {});
 };
 
@@ -89,13 +89,14 @@ const VideoPlayer = ({ movie, onClose, user }) => {
     };
   }, []);
 
-  // Persist accumulated watch time (analytics only, independent of the view counter)
+  // Persist accumulated watch time (analytics only, independent of the view counter).
+  // Watch time is tied to registered users.
   const postWatchTime = async (watchedSeconds) => {
     const seconds = Math.round(watchedSeconds || 0);
-    if (seconds <= 0) return;
+    if (seconds <= 0 || user?.id === undefined || user?.id === null || user?.id === '') return;
     try {
       await axios.post(`${API_BASE_URL}/movies/${movie.id}/watch`, {
-        userId: user?.id,
+        userId: user.id,
         watchedSeconds: seconds,
       });
     } catch (err) {
@@ -349,12 +350,12 @@ const MovieBottomSheet = ({ movie, isOpen, onClose, onFullscreen, user }) => {
   const videoRef = useRef(null);
   const watchedRef = useRef(0);
 
-  // Persist watch time accrued in the inline preview (analytics only)
+  // Persist watch time accrued in the inline preview (analytics only, registered users)
   const flushPreviewWatchTime = () => {
     const seconds = Math.round(watchedRef.current);
-    if (seconds <= 0 || !movie?.id) return;
+    if (seconds <= 0 || !movie?.id || user?.id === undefined || user?.id === null || user?.id === '') return;
     axios.post(`${API_BASE_URL}/movies/${movie.id}/watch`, {
-      userId: user?.id,
+      userId: user.id,
       watchedSeconds: seconds,
     }).catch(() => {});
   };
