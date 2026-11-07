@@ -66,7 +66,7 @@ const VideoPlayer = ({ movie, onClose, user }) => {
           const threshold = duration * 0.375;
           
           if (nextTime >= threshold) {
-            registerView();
+            registerView(nextTime);
             return nextTime;
           }
           return nextTime;
@@ -77,7 +77,7 @@ const VideoPlayer = ({ movie, onClose, user }) => {
     return () => clearInterval(interval);
   }, [duration, viewRegistered]);
 
-  const registerView = async () => {
+  const registerView = async (watchedSeconds = 0) => {
     if (viewRegistered) return;
     
     // Mark as registered locally first to prevent race conditions
@@ -98,7 +98,8 @@ const VideoPlayer = ({ movie, onClose, user }) => {
 
     try {
       await axios.post(`${API_BASE_URL}/movies/${movie.id}/view`, {
-        userId: userId
+        userId: userId,
+        watchedSeconds: Math.round(watchedSeconds)
       });
       console.log("View registered successfully for threshold 37.5%");
     } catch (err) {
@@ -345,7 +346,7 @@ const VideoPlayer = ({ movie, onClose, user }) => {
 };
 
 // Registers a movie view once per user/device (same ~37.5% watched rule as the player)
-const registerMovieView = async (movie, user) => {
+const registerMovieView = async (movie, user, watchedSeconds = 0) => {
   let userId = user?.username;
   if (!userId) {
     userId = localStorage.getItem('vdj_anon_id');
@@ -360,7 +361,10 @@ const registerMovieView = async (movie, user) => {
   localStorage.setItem(viewedKey, 'true');
 
   try {
-    await axios.post(`${API_BASE_URL}/movies/${movie.id}/view`, { userId });
+    await axios.post(`${API_BASE_URL}/movies/${movie.id}/view`, {
+      userId,
+      watchedSeconds: Math.round(watchedSeconds)
+    });
   } catch (err) {
     console.error('Failed to register view:', err);
   }
@@ -392,7 +396,7 @@ const MovieBottomSheet = ({ movie, isOpen, onClose, onFullscreen, user }) => {
       watched += 1;
       if (watched >= video.duration * 0.375) {
         clearInterval(interval);
-        registerMovieView(movie, user);
+        registerMovieView(movie, user, watched);
       }
     }, 1000);
 
@@ -2065,6 +2069,7 @@ const DJProfileScreen = ({ user, onMovieClick, onSeriesClick }) => {
 const ProfileScreen = ({ user, onMovieClick, onSeriesClick }) => {
   const [userMovies, setUserMovies] = useState([]);
   const [userSeries, setUserSeries] = useState([]);
+  const [watchTimeSeconds, setWatchTimeSeconds] = useState(0);
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [activeTab, setActiveTab] = useState('single'); // 'single' or 'packs'
@@ -2106,9 +2111,20 @@ const ProfileScreen = ({ user, onMovieClick, onSeriesClick }) => {
     }
   };
 
+  const fetchWatchTime = async () => {
+    if (!user) return;
+    try {
+      const response = await axios.get(`${API_BASE_URL}/stats/watch-time/${encodeURIComponent(user.username)}`);
+      setWatchTimeSeconds(response.data.totalSeconds || 0);
+    } catch (err) {
+      console.error("Failed to fetch watch time:", err);
+    }
+  };
+
   useEffect(() => {
     fetchUserMovies();
     fetchUserSeries();
+    fetchWatchTime();
   }, [user]);
 
   const handleDelete = async (e, movieId) => {
@@ -2134,6 +2150,7 @@ const ProfileScreen = ({ user, onMovieClick, onSeriesClick }) => {
   };
 
   const totalViews = userMovies.reduce((acc, movie) => acc + (movie.views || 0), 0);
+  const watchTimeHours = (watchTimeSeconds / 3600).toFixed(2);
 
   return (
     <div className="pb-20 min-h-screen bg-[#0a0a0a]">
@@ -2196,21 +2213,27 @@ const ProfileScreen = ({ user, onMovieClick, onSeriesClick }) => {
 
           {/* Stats */}
           <div className="px-6 mt-2">
-            <div className="grid grid-cols-3 rounded-2xl bg-[#121212] border border-white/5 divide-x divide-white/5 overflow-hidden">
-              <div className="p-4 flex flex-col items-center justify-center text-center gap-1">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-px rounded-2xl bg-white/5 border border-white/5 overflow-hidden">
+              <div className="p-4 bg-[#121212] flex flex-col items-center justify-center text-center gap-1">
                 <Play size={16} className="text-gray-500" fill="currentColor" />
                 <p className="text-xl sm:text-2xl font-black text-white">{userMovies.length}</p>
                 <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Publications</p>
               </div>
-              <div className="p-4 flex flex-col items-center justify-center text-center gap-1">
+              <div className="p-4 bg-[#121212] flex flex-col items-center justify-center text-center gap-1">
                 <TrendingUp size={16} className="text-gold" />
                 <p className="text-xl sm:text-2xl font-black text-gold">{totalViews.toLocaleString()}</p>
                 <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Total Reach</p>
               </div>
-              <div className="p-4 flex flex-col items-center justify-center text-center gap-1">
+              <div className="p-4 bg-[#121212] flex flex-col items-center justify-center text-center gap-1">
                 <Library size={16} className="text-gray-500" />
                 <p className="text-xl sm:text-2xl font-black text-white">{userSeries.length}</p>
                 <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Packs</p>
+              </div>
+              <div className="p-4 bg-[#121212] flex flex-col items-center justify-center text-center gap-1">
+                <Clock size={16} className="text-gold" />
+                <p className="text-xl sm:text-2xl font-black text-white">{watchTimeHours} hrs</p>
+                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Watch Time</p>
+                <p className="text-[10px] text-gray-600">Gained monthly</p>
               </div>
             </div>
           </div>
