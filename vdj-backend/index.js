@@ -258,6 +258,27 @@ app.use((req, res, next) => {
 const apiRouter = express.Router();
 app.use('/api', apiRouter);
 
+// Ensure analytics tables exist (idempotent; safe to run on every boot)
+(async () => {
+    try {
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS watch_sessions (
+              id SERIAL PRIMARY KEY,
+              movie_id integer NOT NULL,
+              user_id text NOT NULL,
+              watched_seconds integer NOT NULL DEFAULT 0,
+              is_valid boolean DEFAULT true,
+              created_at timestamp with time zone DEFAULT NOW(),
+              CONSTRAINT watch_sessions_movie_id_fkey FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE,
+              UNIQUE(movie_id, user_id)
+            )
+        `);
+        console.log(`[${new Date().toISOString()}] watch_sessions table ready`);
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] WATCH_SESSIONS_TABLE_ERROR:`, error.message);
+    }
+})();
+
 // Stream Thumbnail Images from Cloud (Moved to a higher position)
 apiRouter.get('/thumbnail/:movie_id', async (req, res) => {
     const movieId = parseInt(req.params.movie_id);
@@ -1058,13 +1079,30 @@ apiRouter.put('/movies/:id', async (req, res) => {
     }
 });
 
-// Register a unique view
+// Maximum credible watch time per session (6 hours) - guards against inflated/fraudulent values
+const MAX_SESSION_SECONDS = 6 * 60 * 60;
+
+// Register a unique view and record the eligible watch session (for watch-time analytics)
 apiRouter.post('/movies/:id/view', async (req, res) => {
     const movieId = req.params.id;
-    const { userId } = req.body;
+    const { userId, watchedSeconds } = req.body;
 
     if (!userId) {
         return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    // Record the watch session independently of the view counter so analytics survive
+    // even if the legacy view insert is rejected (e.g. non-UUID ids).
+    const seconds = Math.max(0, Math.min(parseInt(watchedSeconds, 10) || 0, MAX_SESSION_SECONDS));
+    if (seconds > 0) {
+        try {
+            await db.query(
+                'INSERT INTO watch_sessions (movie_id, user_id, watched_seconds) VALUES ($1, $2, $3) ON CONFLICT (movie_id, user_id) DO NOTHING',
+                [movieId, String(userId), seconds]
+            );
+        } catch (sessionError) {
+            console.error(`[${new Date().toISOString()}] WATCH_SESSION_ERROR:`, sessionError.message);
+        }
     }
 
     try {
@@ -1085,7 +1123,29 @@ apiRouter.post('/movies/:id/view', async (req, res) => {
         }
     } catch (error) {
         console.error(`[${new Date().toISOString()}] VIEW_REGISTRATION_ERROR:`, error);
+        // The view counter failed, but the watch session may already be stored.
         res.status(500).json({ error: 'Failed to register view', details: error.message });
+    }
+});
+
+// Publisher watch-time analytics (total for the current calendar month)
+apiRouter.get('/stats/watch-time/:name', async (req, res) => {
+    try {
+        const result = await db.query(
+            `SELECT COALESCE(SUM(LEAST(ws.watched_seconds, $2)), 0) AS total_seconds
+             FROM watch_sessions ws
+             JOIN movies m ON m.id = ws.movie_id
+             WHERE m.publisher_name = $1
+               AND ws.is_valid = true
+               AND ws.watched_seconds >= 10
+               AND ws.user_id <> m.publisher_name
+               AND ws.created_at >= date_trunc('month', NOW())`,
+            [req.params.name, MAX_SESSION_SECONDS]
+        );
+        res.json({ totalSeconds: Number(result.rows[0].total_seconds) || 0 });
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] WATCH_TIME_ERROR:`, error);
+        res.status(500).json({ error: 'Failed to compute watch time', details: error.message });
     }
 });
 
