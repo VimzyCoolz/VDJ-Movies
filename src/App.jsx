@@ -5,6 +5,14 @@ import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5000/api' : '/api');
 
+// Compact duration for the per-movie watch-time badges (seconds -> 45s / 12m / 1.5h)
+const formatDuration = (totalSeconds) => {
+  const s = Math.max(0, Math.round(Number(totalSeconds) || 0));
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  return `${(s / 3600).toFixed(1)}h`;
+};
+
 // Record a play - fires the moment playback starts, in either the inline preview or the
 // fullscreen player. Reach and views are tied to registered users, and the backend
 // dedupes to one play per user per movie (preview + player count once).
@@ -2308,10 +2316,20 @@ const ProfileScreen = ({ user, onMovieClick, onSeriesClick }) => {
                           alt={movie.title} 
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60 group-hover:opacity-80 transition-opacity" />
-                        <div className="absolute bottom-2 left-2 right-2 flex justify-between items-center">
-                          <div className="px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded-md border border-white/10 flex items-center gap-1">
+                        <div className="absolute bottom-2 left-2 right-2 flex justify-between items-center gap-1">
+                          <div
+                            title="Total Reach (users who pressed play)"
+                            className="px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded-md border border-white/10 flex items-center gap-1"
+                          >
                             <Play size={8} className="text-gold" fill="currentColor" />
-                            <span className="text-[9px] font-black text-white">{movie.views}</span>
+                            <span className="text-[9px] font-black text-white">{movie.views || 0}</span>
+                          </div>
+                          <div
+                            title="Watch Time this month"
+                            className="px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded-md border border-white/10 flex items-center gap-1"
+                          >
+                            <Clock size={8} className="text-gold" />
+                            <span className="text-[9px] font-black text-white">{formatDuration(movie.watch_seconds)}</span>
                           </div>
                         </div>
                       </div>

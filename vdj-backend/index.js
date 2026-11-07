@@ -267,11 +267,17 @@ app.use('/api', apiRouter);
               movie_id integer NOT NULL,
               user_id text NOT NULL,
               watched_seconds integer NOT NULL DEFAULT 0,
+              period_month date NOT NULL DEFAULT date_trunc('month', NOW())::date,
               is_valid boolean DEFAULT true,
               created_at timestamp with time zone DEFAULT NOW(),
               CONSTRAINT watch_sessions_movie_id_fkey FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE,
               UNIQUE(movie_id, user_id)
             )
+        `);
+        // Add the monthly bucket to databases created before it existed
+        await db.query(`
+            ALTER TABLE watch_sessions
+            ADD COLUMN IF NOT EXISTS period_month date NOT NULL DEFAULT date_trunc('month', NOW())::date
         `);
         console.log(`[${new Date().toISOString()}] watch_sessions table ready`);
     } catch (error) {
@@ -968,8 +974,17 @@ apiRouter.get('/movies', async (req, res) => {
 // Get movies by publisher name
 apiRouter.get('/movies/publisher/:name', async (req, res) => {
     try {
+        // m.views carries the movie's reach (distinct registered users who pressed play);
+        // watch_seconds carries the movie's watch time for the current month.
         const result = await db.query(
             `SELECT DISTINCT ON (m.id) m.*, t.telegram_file_id,
+              COALESCE((
+                SELECT SUM(ws.watched_seconds)
+                FROM watch_sessions ws
+                WHERE ws.movie_id = m.id
+                  AND ws.is_valid = true
+                  AND ws.period_month = date_trunc('month', NOW())::date
+              ), 0) AS watch_seconds,
               (SELECT array_agg(s.title) 
                FROM series_movies sm 
                JOIN series s ON sm.series_id = s.id 
@@ -1114,19 +1129,24 @@ const registeredId = (userId) => (userId === null || userId === undefined || Str
     ? null
     : String(userId).trim();
 
-// Store (or raise) the watch time a user has accumulated on a movie.
-// Keeps the highest value seen so repeated/partial reports never lower it.
-// Watch time is attributed to registered accounts only.
+// Store the watch time a registered user has accumulated on a movie for the current month.
+// One record per user per movie: within a month we keep the highest value seen, and when a
+// new calendar month starts the record resets so watch time is measured monthly.
 const upsertWatchSession = async (movieId, userId, watchedSeconds) => {
     const seconds = Math.max(0, Math.min(parseInt(watchedSeconds, 10) || 0, MAX_SESSION_SECONDS));
     const viewer = registeredId(userId);
     if (seconds <= 0 || !viewer) return;
     try {
         await db.query(
-            `INSERT INTO watch_sessions (movie_id, user_id, watched_seconds)
-             VALUES ($1, $2, $3)
-             ON CONFLICT (movie_id, user_id)
-             DO UPDATE SET watched_seconds = GREATEST(watch_sessions.watched_seconds, EXCLUDED.watched_seconds)`,
+            `INSERT INTO watch_sessions (movie_id, user_id, watched_seconds, period_month)
+             VALUES ($1, $2, $3, date_trunc('month', NOW())::date)
+             ON CONFLICT (movie_id, user_id) DO UPDATE SET
+               watched_seconds = CASE
+                 WHEN watch_sessions.period_month = EXCLUDED.period_month
+                   THEN GREATEST(watch_sessions.watched_seconds, EXCLUDED.watched_seconds)
+                 ELSE EXCLUDED.watched_seconds
+               END,
+               period_month = EXCLUDED.period_month`,
             [movieId, viewer, seconds]
         );
     } catch (sessionError) {
@@ -1182,8 +1202,8 @@ apiRouter.post('/movies/:id/view', async (req, res) => {
     }
 });
 
-// Publisher watch-time analytics - total seconds watched this calendar month.
-// Every second any viewer (the publisher included) has the movie playing is counted.
+// Publisher watch-time analytics - total seconds registered users played this month.
+// Watch time is bucketed monthly (watch_sessions.period_month) and resets each calendar month.
 apiRouter.get('/stats/watch-time/:name', async (req, res) => {
     try {
         const result = await db.query(
@@ -1193,7 +1213,7 @@ apiRouter.get('/stats/watch-time/:name', async (req, res) => {
              WHERE m.publisher_name = $1
                AND ws.is_valid = true
                AND ws.watched_seconds >= 1
-               AND ws.created_at >= date_trunc('month', NOW())`,
+               AND ws.period_month = date_trunc('month', NOW())::date`,
             [req.params.name, MAX_SESSION_SECONDS]
         );
         res.json({ totalSeconds: Number(result.rows[0].total_seconds) || 0 });
