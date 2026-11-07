@@ -107,6 +107,14 @@ CREATE TABLE IF NOT EXISTS watch_sessions (
   CONSTRAINT watch_sessions_movie_id_fkey FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE,
   UNIQUE(movie_id, user_id)
 );
+CREATE TABLE IF NOT EXISTS movie_plays (
+  id SERIAL PRIMARY KEY,
+  movie_id integer NOT NULL,
+  user_id text NOT NULL,
+  played_at timestamp with time zone DEFAULT NOW(),
+  CONSTRAINT movie_plays_movie_id_fkey FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE,
+  UNIQUE(movie_id, user_id)
+);
 CREATE TABLE IF NOT EXISTS movie_clicks (
   id SERIAL PRIMARY KEY,
   movie_id integer NOT NULL,

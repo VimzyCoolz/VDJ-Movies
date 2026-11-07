@@ -279,19 +279,22 @@ app.use('/api', apiRouter);
     }
 
     try {
+        // One play per registered user per movie. This is what makes reach / views
+        // dedupe across the inline preview and the fullscreen player, and ties the
+        // count to a real account (required for future monetization).
         await db.query(`
-            CREATE TABLE IF NOT EXISTS movie_clicks (
+            CREATE TABLE IF NOT EXISTS movie_plays (
               id SERIAL PRIMARY KEY,
               movie_id integer NOT NULL,
               user_id text NOT NULL,
-              created_at timestamp with time zone DEFAULT NOW(),
-              CONSTRAINT movie_clicks_movie_id_fkey FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE,
+              played_at timestamp with time zone DEFAULT NOW(),
+              CONSTRAINT movie_plays_movie_id_fkey FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE,
               UNIQUE(movie_id, user_id)
             )
         `);
-        console.log(`[${new Date().toISOString()}] movie_clicks table ready`);
+        console.log(`[${new Date().toISOString()}] movie_plays table ready`);
     } catch (error) {
-        console.error(`[${new Date().toISOString()}] MOVIE_CLICKS_TABLE_ERROR:`, error.message);
+        console.error(`[${new Date().toISOString()}] MOVIE_PLAYS_TABLE_ERROR:`, error.message);
     }
 })();
 
@@ -1098,9 +1101,6 @@ apiRouter.put('/movies/:id', async (req, res) => {
 // Maximum credible watch time per session (6 hours) - guards against inflated/fraudulent values
 const MAX_SESSION_SECONDS = 6 * 60 * 60;
 
-// Registered account ids are UUIDs (see users.id); anything else is anonymous
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 // Escape user-provided text so it can't be parsed as markup in Telegram captions
 const escapeHtml = (value) =>
     String(value ?? '')
@@ -1108,76 +1108,91 @@ const escapeHtml = (value) =>
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 
+// Normalize an incoming identifier to a registered account id (CoolzAuth ids are
+// integers, so we never assume a UUID). Returns null for anonymous requests.
+const registeredId = (userId) => (userId === null || userId === undefined || String(userId).trim() === '')
+    ? null
+    : String(userId).trim();
+
 // Store (or raise) the watch time a user has accumulated on a movie.
 // Keeps the highest value seen so repeated/partial reports never lower it.
+// Watch time is attributed to registered accounts only.
 const upsertWatchSession = async (movieId, userId, watchedSeconds) => {
     const seconds = Math.max(0, Math.min(parseInt(watchedSeconds, 10) || 0, MAX_SESSION_SECONDS));
-    if (seconds <= 0) return;
+    const viewer = registeredId(userId);
+    if (seconds <= 0 || !viewer) return;
     try {
         await db.query(
             `INSERT INTO watch_sessions (movie_id, user_id, watched_seconds)
              VALUES ($1, $2, $3)
              ON CONFLICT (movie_id, user_id)
              DO UPDATE SET watched_seconds = GREATEST(watch_sessions.watched_seconds, EXCLUDED.watched_seconds)`,
-            [movieId, String(userId), seconds]
+            [movieId, viewer, seconds]
         );
     } catch (sessionError) {
         console.error(`[${new Date().toISOString()}] WATCH_SESSION_ERROR:`, sessionError.message);
     }
 };
 
-// Register a unique view and record the eligible watch session (for watch-time analytics)
+// Record a play. Reach and the per-movie view count are tied to registered users,
+// and are deduped to a single play per user per movie - so pressing play in the
+// inline preview and then again in the fullscreen player only counts once.
 apiRouter.post('/movies/:id/view', async (req, res) => {
     const movieId = req.params.id;
-    const { userId, watchedSeconds } = req.body;
+    const { userId, watchedSeconds } = req.body || {};
+    const viewer = registeredId(userId);
 
-    if (!userId) {
-        return res.status(400).json({ error: 'User ID is required' });
+    // Anonymous plays do not count toward reach
+    if (!viewer) {
+        return res.status(401).json({ error: 'A registered account is required to record a play' });
     }
-
-    // Views and watch time must come from a registered account (UUID), not anonymous ids
-    if (!UUID_RE.test(String(userId))) {
-        return res.status(403).json({ error: 'An account is required to view content' });
-    }
-
-    // Record the watch session alongside the view (kept at the highest value seen)
-    await upsertWatchSession(movieId, userId, watchedSeconds);
 
     try {
-        // Use an UPSERT-like approach with INSERT IGNORE (or ON CONFLICT DO NOTHING in PG)
-        // to handle idempotency and duplicate prevention at the DB level
-        const viewResult = await db.query(
-            'INSERT INTO movie_views (movie_id, user_id) VALUES ($1, $2) ON CONFLICT (movie_id, user_id) DO NOTHING RETURNING id',
-            [movieId, userId]
+        const movieExists = await db.query('SELECT 1 FROM movies WHERE id = $1', [movieId]);
+        if (movieExists.rows.length === 0) {
+            return res.status(404).json({ error: 'Movie not found' });
+        }
+
+        // Insert-once guard: the first play by this user counts, repeats are ignored
+        const inserted = await db.query(
+            `INSERT INTO movie_plays (movie_id, user_id)
+             VALUES ($1, $2)
+             ON CONFLICT (movie_id, user_id) DO NOTHING
+             RETURNING id`,
+            [movieId, viewer]
         );
 
-        // If a row was returned, it means this is a new unique view
-        if (viewResult.rows.length > 0) {
-            await db.query('UPDATE movies SET views = views + 1 WHERE id = $1', [movieId]);
-            console.log(`[${new Date().toISOString()}] NEW_VIEW_REGISTERED: Movie ${movieId} by User ${userId}`);
-            return res.json({ success: true, message: 'View registered' });
-        } else {
-            return res.json({ success: false, message: 'View already registered for this user' });
+        let views = null;
+        if (inserted.rows.length > 0) {
+            const result = await db.query(
+                'UPDATE movies SET views = COALESCE(views, 0) + 1 WHERE id = $1 RETURNING views',
+                [movieId]
+            );
+            views = result.rows[0]?.views ?? null;
+            console.log(`[${new Date().toISOString()}] PLAY_RECORDED: Movie ${movieId} by user ${viewer} -> ${views} views`);
         }
+
+        // The play may already carry watched seconds (e.g. closing the preview)
+        await upsertWatchSession(movieId, viewer, watchedSeconds);
+
+        return res.json({ success: true, counted: inserted.rows.length > 0, views });
     } catch (error) {
         console.error(`[${new Date().toISOString()}] VIEW_REGISTRATION_ERROR:`, error);
-        // The view counter failed, but the watch session may already be stored.
-        res.status(500).json({ error: 'Failed to register view', details: error.message });
+        res.status(500).json({ error: 'Failed to register play', details: error.message });
     }
 });
 
-// Publisher watch-time analytics (total for the current calendar month)
+// Publisher watch-time analytics - total seconds watched this calendar month.
+// Every second any viewer (the publisher included) has the movie playing is counted.
 apiRouter.get('/stats/watch-time/:name', async (req, res) => {
     try {
         const result = await db.query(
             `SELECT COALESCE(SUM(LEAST(ws.watched_seconds, $2)), 0) AS total_seconds
              FROM watch_sessions ws
              JOIN movies m ON m.id = ws.movie_id
-             LEFT JOIN users pu ON pu.username = m.publisher_name
              WHERE m.publisher_name = $1
                AND ws.is_valid = true
                AND ws.watched_seconds >= 1
-               AND (pu.id IS NULL OR ws.user_id <> pu.id::text)
                AND ws.created_at >= date_trunc('month', NOW())`,
             [req.params.name, MAX_SESSION_SECONDS]
         );
@@ -1188,54 +1203,28 @@ apiRouter.get('/stats/watch-time/:name', async (req, res) => {
     }
 });
 
-// Record watched seconds as they accumulate (independent of the view counter)
+// Record watched seconds as they accumulate (independent of the view counter).
+// Watch time is tied to registered users only.
 apiRouter.post('/movies/:id/watch', async (req, res) => {
     const movieId = req.params.id;
-    const { userId, watchedSeconds } = req.body;
+    const { userId, watchedSeconds } = req.body || {};
+    const viewer = registeredId(userId);
 
-    if (!userId) {
-        return res.status(400).json({ error: 'User ID is required' });
-    }
-    if (!UUID_RE.test(String(userId))) {
-        return res.status(403).json({ error: 'An account is required to record watch time' });
+    if (!viewer) {
+        return res.status(401).json({ error: 'A registered account is required to record watch time' });
     }
 
-    await upsertWatchSession(movieId, userId, watchedSeconds);
+    await upsertWatchSession(movieId, viewer, watchedSeconds);
     return res.json({ success: true });
 });
 
-// Record that a user clicked a movie from the catalog (unique per user per movie)
-apiRouter.post('/movies/:id/click', async (req, res) => {
-    const movieId = req.params.id;
-    const { userId } = req.body;
-
-    if (!userId) {
-        return res.status(400).json({ error: 'User ID is required' });
-    }
-    if (!UUID_RE.test(String(userId))) {
-        return res.status(403).json({ error: 'An account is required' });
-    }
-
-    try {
-        await db.query(
-            'INSERT INTO movie_clicks (movie_id, user_id) VALUES ($1, $2) ON CONFLICT (movie_id, user_id) DO NOTHING',
-            [movieId, String(userId)]
-        );
-        return res.json({ success: true });
-    } catch (error) {
-        console.error(`[${new Date().toISOString()}] MOVIE_CLICK_ERROR:`, error);
-        res.status(500).json({ error: 'Failed to record click', details: error.message });
-    }
-});
-
-// Publisher reach = distinct users who clicked any of the publisher's movies from the catalog
+// Publisher reach = number of registered users who have played the publisher's movies.
+// Backed by the per-movie view counter, which itself only counts one play per user
+// per movie (see POST /movies/:id/view).
 apiRouter.get('/stats/reach/:name', async (req, res) => {
     try {
         const result = await db.query(
-            `SELECT COUNT(DISTINCT mc.user_id) AS reach
-             FROM movie_clicks mc
-             JOIN movies m ON m.id = mc.movie_id
-             WHERE m.publisher_name = $1`,
+            'SELECT COALESCE(SUM(COALESCE(views, 0)), 0) AS reach FROM movies WHERE publisher_name = $1',
             [req.params.name]
         );
         res.json({ reach: Number(result.rows[0].reach) || 0 });

@@ -5,6 +5,16 @@ import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5000/api' : '/api');
 
+// Record a play - fires the moment playback starts, in either the inline preview or the
+// fullscreen player. Reach and views are tied to registered users, and the backend
+// dedupes to one play per user per movie (preview + player count once).
+const recordPlay = (movie, user) => {
+  if (!movie?.id || user?.id === undefined || user?.id === null || user?.id === '') return;
+  axios.post(`${API_BASE_URL}/movies/${movie.id}/view`, {
+    userId: user.id,
+  }).catch(() => {});
+};
+
 const LoadingScreen = () => (
   <div className="fixed inset-0 flex flex-col items-center justify-center bg-black bg-opacity-100 z-50">
     <div className="relative w-48 h-48 md:w-64 md:h-64 mb-6">
@@ -39,47 +49,38 @@ const VideoPlayer = ({ movie, onClose, user }) => {
   const [showControls, setShowControls] = useState(true);
   const [isLandscape, setIsLandscape] = useState(false);
   const [zoomMode, setZoomMode] = useState('fit'); // 'fit', 'stretch', 'crop'
-  const [watchedTime, setWatchedTime] = useState(0);
-  const [viewRegistered, setViewRegistered] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const controlsTimeoutRef = useRef(null);
   const watchedTimeRef = useRef(0);
+  const playRecordedRef = useRef(false);
 
+  // Record the play the moment the fullscreen player starts
   useEffect(() => {
-    // Check if already viewed in this session/device to prevent redundant logic
-    const userId = user?.id || 'anon';
-    const viewedKey = `viewed_${movie.id}_${userId}`;
-    if (localStorage.getItem(viewedKey)) {
-      setViewRegistered(true);
-    }
-  }, [movie.id, user]);
+    if (playRecordedRef.current) return;
+    playRecordedRef.current = true;
+    recordPlay(movie, user);
+  }, [movie.id]);
 
-  // Count every second actually played (for watch-time), and register the view
-  // once the 37.5% threshold is reached.
+  // Count every second the movie is actually playing (for watch time)
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
     const interval = setInterval(() => {
-      if (video && !video.paused && !video.seeking && duration > 0) {
+      if (video && !video.paused && !video.seeking && video.duration > 0) {
         const nextTime = watchedTimeRef.current + 1;
         watchedTimeRef.current = nextTime;
-        setWatchedTime(nextTime);
-
-        if (!viewRegistered && nextTime >= duration * 0.375) {
-          registerView(nextTime);
-        }
 
         // Persist periodically so watch time survives the player closing
-        if (nextTime % 10 === 0) {
+        if (nextTime % 5 === 0) {
           postWatchTime(nextTime);
         }
       }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [duration, viewRegistered]);
+  }, [movie.id]);
 
   // Flush the final watch time when the player closes
   useEffect(() => {
@@ -88,42 +89,18 @@ const VideoPlayer = ({ movie, onClose, user }) => {
     };
   }, []);
 
-  // Persist accumulated watch time (analytics only, independent of the view counter)
+  // Persist accumulated watch time (analytics only, independent of the view counter).
+  // Watch time is tied to registered users.
   const postWatchTime = async (watchedSeconds) => {
-    const userId = user?.id;
     const seconds = Math.round(watchedSeconds || 0);
-    if (!userId || seconds <= 0) return;
+    if (seconds <= 0 || user?.id === undefined || user?.id === null || user?.id === '') return;
     try {
       await axios.post(`${API_BASE_URL}/movies/${movie.id}/watch`, {
-        userId,
+        userId: user.id,
         watchedSeconds: seconds,
       });
     } catch (err) {
       // Analytics only - never block playback
-    }
-  };
-
-  const registerView = async (watchedSeconds = 0) => {
-    if (viewRegistered) return;
-    
-    // Views/watch time must come from a real account
-    const userId = user?.id;
-    if (!userId) return;
-
-    // Mark as registered locally first to prevent race conditions
-    setViewRegistered(true);
-
-    const viewedKey = `viewed_${movie.id}_${userId}`;
-    localStorage.setItem(viewedKey, 'true');
-
-    try {
-      await axios.post(`${API_BASE_URL}/movies/${movie.id}/view`, {
-        userId: userId,
-        watchedSeconds: Math.round(watchedSeconds)
-      });
-      console.log("View registered successfully for threshold 37.5%");
-    } catch (err) {
-      console.error("Failed to register view:", err);
     }
   };
 
@@ -365,26 +342,6 @@ const VideoPlayer = ({ movie, onClose, user }) => {
   );
 };
 
-// Registers a movie view once per user/device (same ~37.5% watched rule as the player)
-const registerMovieView = async (movie, user, watchedSeconds = 0) => {
-  // Views/watch time must come from a real account
-  const userId = user?.id;
-  if (!userId) return;
-
-  const viewedKey = `viewed_${movie.id}_${userId}`;
-  if (localStorage.getItem(viewedKey)) return;
-  localStorage.setItem(viewedKey, 'true');
-
-  try {
-    await axios.post(`${API_BASE_URL}/movies/${movie.id}/view`, {
-      userId,
-      watchedSeconds: Math.round(watchedSeconds)
-    });
-  } catch (err) {
-    console.error('Failed to register view:', err);
-  }
-};
-
 const MovieBottomSheet = ({ movie, isOpen, onClose, onFullscreen, user }) => {
   const navigate = useNavigate();
   const [started, setStarted] = useState(false);
@@ -393,10 +350,10 @@ const MovieBottomSheet = ({ movie, isOpen, onClose, onFullscreen, user }) => {
   const videoRef = useRef(null);
   const watchedRef = useRef(0);
 
-  // Persist watch time accrued in the inline preview (analytics only)
+  // Persist watch time accrued in the inline preview (analytics only, registered users)
   const flushPreviewWatchTime = () => {
     const seconds = Math.round(watchedRef.current);
-    if (seconds <= 0 || !user?.id || !movie?.id) return;
+    if (seconds <= 0 || !movie?.id || user?.id === undefined || user?.id === null || user?.id === '') return;
     axios.post(`${API_BASE_URL}/movies/${movie.id}/watch`, {
       userId: user.id,
       watchedSeconds: seconds,
@@ -410,22 +367,17 @@ const MovieBottomSheet = ({ movie, isOpen, onClose, onFullscreen, user }) => {
     setPreviewLoading(false);
   }, [movie?.id, isOpen]);
 
-  // Count watched seconds for inline playback; register the view at 37.5%
+  // Count every second the inline preview is actually playing (for watch time)
   useEffect(() => {
     if (!started || !movie) return;
     const video = videoRef.current;
     if (!video) return;
 
     watchedRef.current = 0;
-    let viewSent = false;
     const interval = setInterval(() => {
       if (video.paused || video.seeking || !video.duration) return;
       watchedRef.current += 1;
-      if (!viewSent && watchedRef.current >= video.duration * 0.375) {
-        viewSent = true;
-        registerMovieView(movie, user, watchedRef.current);
-      }
-      if (watchedRef.current % 10 === 0) {
+      if (watchedRef.current % 5 === 0) {
         flushPreviewWatchTime();
       }
     }, 1000);
@@ -450,6 +402,8 @@ const MovieBottomSheet = ({ movie, isOpen, onClose, onFullscreen, user }) => {
     if (!requireAccount()) return;
 
     if (!started) {
+      // Record the play the moment the viewer presses play
+      recordPlay(movie, user);
       // Mount the inline player; autoPlay takes over from the user gesture
       setStarted(true);
       setIsPlaying(true);
@@ -2718,10 +2672,6 @@ const App = () => {
   }, []);
 
   const handleMovieClick = (movie) => {
-  // Count this catalog click toward the publisher's reach (unique per user/movie)
-  if (user?.id && movie?.id) {
-    axios.post(`${API_BASE_URL}/movies/${movie.id}/click`, { userId: user.id }).catch(() => {});
-  }
   setSelectedMovie(movie);
   setIsSheetOpen(true);
 };
