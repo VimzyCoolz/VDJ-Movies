@@ -1101,6 +1101,13 @@ const MAX_SESSION_SECONDS = 6 * 60 * 60;
 // Registered account ids are UUIDs (see users.id); anything else is anonymous
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Escape user-provided text so it can't be parsed as markup in Telegram captions
+const escapeHtml = (value) =>
+    String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
 // Store (or raise) the watch time a user has accumulated on a movie.
 // Keeps the highest value seen so repeated/partial reports never lower it.
 const upsertWatchSession = async (movieId, userId, watchedSeconds) => {
@@ -1307,10 +1314,22 @@ apiRouter.post('/upload', upload.fields([
         // Upload to storage with optimized parameters
         console.log(`[${new Date().toISOString()}] CLOUD_UPLOAD_INIT: ${title} - Using 4 workers, 512KB chunks`);
         
+        // Build the caption with escaped, user-safe text so characters like * _ ~ ` can't
+        // produce invalid message entities (ENTITY_BOUNDS_INVALID from messages.SendMedia)
+        const caption = [
+            `<b>${escapeHtml(title)}</b>`,
+            `Narrated by: ${escapeHtml(dj_name)}`,
+            `Published by: ${escapeHtml(publisher_name || 'Anonymous')}`,
+            '',
+            escapeHtml(summary || ''),
+            '',
+            `#${escapeHtml(genre || '')}`,
+        ].join('\n');
+
         const uploadedFile = await activeClient.sendFile(entity, {
             file: movieFile.path, // Read directly from disk
-            caption: `**${title}**\nNarrated by: ${dj_name}\nPublished by: ${publisher_name || 'Anonymous'}\n\n${summary}\n\n#${genre}`,
-            parseMode: 'markdown',
+            caption,
+            parseMode: 'html',
             workers: 4, 
             maxChunkSize: 512 * 1024, 
             forceDocument: false, 
