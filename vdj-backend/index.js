@@ -267,17 +267,11 @@ app.use('/api', apiRouter);
               movie_id integer NOT NULL,
               user_id text NOT NULL,
               watched_seconds integer NOT NULL DEFAULT 0,
-              period_month date NOT NULL DEFAULT date_trunc('month', NOW())::date,
               is_valid boolean DEFAULT true,
               created_at timestamp with time zone DEFAULT NOW(),
               CONSTRAINT watch_sessions_movie_id_fkey FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE,
               UNIQUE(movie_id, user_id)
             )
-        `);
-        // Add the monthly bucket to databases created before it existed
-        await db.query(`
-            ALTER TABLE watch_sessions
-            ADD COLUMN IF NOT EXISTS period_month date NOT NULL DEFAULT date_trunc('month', NOW())::date
         `);
         console.log(`[${new Date().toISOString()}] watch_sessions table ready`);
     } catch (error) {
@@ -983,7 +977,7 @@ apiRouter.get('/movies/publisher/:name', async (req, res) => {
                 FROM watch_sessions ws
                 WHERE ws.movie_id = m.id
                   AND ws.is_valid = true
-                  AND ws.period_month = date_trunc('month', NOW())::date
+                  AND date_trunc('month', ws.created_at) = date_trunc('month', NOW())
               ), 0) AS watch_seconds,
               (SELECT array_agg(s.title) 
                FROM series_movies sm 
@@ -1132,21 +1126,27 @@ const registeredId = (userId) => (userId === null || userId === undefined || Str
 // Store the watch time a registered user has accumulated on a movie for the current month.
 // One record per user per movie: within a month we keep the highest value seen, and when a
 // new calendar month starts the record resets so watch time is measured monthly.
+// The monthly bucket is derived from created_at (a column that always exists), so this works
+// on any watch_sessions shape without requiring an extra schema migration.
 const upsertWatchSession = async (movieId, userId, watchedSeconds) => {
     const seconds = Math.max(0, Math.min(parseInt(watchedSeconds, 10) || 0, MAX_SESSION_SECONDS));
     const viewer = registeredId(userId);
     if (seconds <= 0 || !viewer) return;
     try {
         await db.query(
-            `INSERT INTO watch_sessions (movie_id, user_id, watched_seconds, period_month)
-             VALUES ($1, $2, $3, date_trunc('month', NOW())::date)
+            `INSERT INTO watch_sessions (movie_id, user_id, watched_seconds, is_valid, created_at)
+             VALUES ($1, $2, $3, true, NOW())
              ON CONFLICT (movie_id, user_id) DO UPDATE SET
                watched_seconds = CASE
-                 WHEN watch_sessions.period_month = EXCLUDED.period_month
+                 WHEN date_trunc('month', watch_sessions.created_at) = date_trunc('month', NOW())
                    THEN GREATEST(watch_sessions.watched_seconds, EXCLUDED.watched_seconds)
                  ELSE EXCLUDED.watched_seconds
                END,
-               period_month = EXCLUDED.period_month`,
+               created_at = CASE
+                 WHEN date_trunc('month', watch_sessions.created_at) = date_trunc('month', NOW())
+                   THEN watch_sessions.created_at
+                 ELSE NOW()
+               END`,
             [movieId, viewer, seconds]
         );
     } catch (sessionError) {
@@ -1203,7 +1203,8 @@ apiRouter.post('/movies/:id/view', async (req, res) => {
 });
 
 // Publisher watch-time analytics - total seconds registered users played this month.
-// Watch time is bucketed monthly (watch_sessions.period_month) and resets each calendar month.
+// Watch time is bucketed monthly: a session only counts for the calendar month it was
+// recorded in, so it resets each month.
 apiRouter.get('/stats/watch-time/:name', async (req, res) => {
     try {
         const result = await db.query(
@@ -1213,7 +1214,7 @@ apiRouter.get('/stats/watch-time/:name', async (req, res) => {
              WHERE m.publisher_name = $1
                AND ws.is_valid = true
                AND ws.watched_seconds >= 1
-               AND ws.period_month = date_trunc('month', NOW())::date`,
+               AND date_trunc('month', ws.created_at) = date_trunc('month', NOW())`,
             [req.params.name, MAX_SESSION_SECONDS]
         );
         res.json({ totalSeconds: Number(result.rows[0].total_seconds) || 0 });
@@ -1239,15 +1240,38 @@ apiRouter.post('/movies/:id/watch', async (req, res) => {
 });
 
 // Publisher reach = number of registered users who have played the publisher's movies.
-// Backed by the per-movie view counter, which itself only counts one play per user
-// per movie (see POST /movies/:id/view).
+// The authoritative source is the movie_plays table (one row per user per movie). We also
+// read the per-movie view counter as a fallback and take the larger of the two, so the total
+// is never under-reported if either source is empty or out of sync.
 apiRouter.get('/stats/reach/:name', async (req, res) => {
+    const publisher = req.params.name;
     try {
-        const result = await db.query(
-            'SELECT COALESCE(SUM(COALESCE(views, 0)), 0) AS reach FROM movies WHERE publisher_name = $1',
-            [req.params.name]
-        );
-        res.json({ reach: Number(result.rows[0].reach) || 0 });
+        let fromPlays = 0;
+        try {
+            const plays = await db.query(
+                `SELECT COUNT(*)::int AS reach
+                 FROM movie_plays mp
+                 JOIN movies m ON m.id = mp.movie_id
+                 WHERE m.publisher_name = $1`,
+                [publisher]
+            );
+            fromPlays = Number(plays.rows[0]?.reach) || 0;
+        } catch (playsError) {
+            console.warn(`[${new Date().toISOString()}] REACH_PLAYS_WARN:`, playsError.message);
+        }
+
+        let fromViews = 0;
+        try {
+            const views = await db.query(
+                'SELECT COALESCE(SUM(COALESCE(views, 0)), 0) AS reach FROM movies WHERE publisher_name = $1',
+                [publisher]
+            );
+            fromViews = Number(views.rows[0]?.reach) || 0;
+        } catch (viewsError) {
+            console.warn(`[${new Date().toISOString()}] REACH_VIEWS_WARN:`, viewsError.message);
+        }
+
+        res.json({ reach: Math.max(fromPlays, fromViews) });
     } catch (error) {
         console.error(`[${new Date().toISOString()}] REACH_ERROR:`, error);
         res.status(500).json({ error: 'Failed to compute reach', details: error.message });
