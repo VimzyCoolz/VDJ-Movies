@@ -102,7 +102,6 @@ CREATE TABLE IF NOT EXISTS watch_sessions (
   movie_id integer NOT NULL,
   user_id text NOT NULL,
   watched_seconds integer NOT NULL DEFAULT 0,
-  period_month date NOT NULL DEFAULT date_trunc('month', NOW())::date,
   is_valid boolean DEFAULT true,
   created_at timestamp with time zone DEFAULT NOW(),
   CONSTRAINT watch_sessions_movie_id_fkey FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE,
