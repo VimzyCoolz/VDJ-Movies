@@ -47,7 +47,7 @@ const VideoPlayer = ({ movie, onClose, user }) => {
 
   useEffect(() => {
     // Check if already viewed in this session/device to prevent redundant logic
-    const userId = user?.username || localStorage.getItem('vdj_anon_id') || 'anon';
+    const userId = user?.id || 'anon';
     const viewedKey = `viewed_${movie.id}_${userId}`;
     if (localStorage.getItem(viewedKey)) {
       setViewRegistered(true);
@@ -80,18 +80,12 @@ const VideoPlayer = ({ movie, onClose, user }) => {
   const registerView = async (watchedSeconds = 0) => {
     if (viewRegistered) return;
     
+    // Views/watch time must come from a real account
+    const userId = user?.id;
+    if (!userId) return;
+
     // Mark as registered locally first to prevent race conditions
     setViewRegistered(true);
-    
-    // Get or create a persistent anonymous ID if not logged in
-    let userId = user?.username;
-    if (!userId) {
-      userId = localStorage.getItem('vdj_anon_id');
-      if (!userId) {
-        userId = `anon_${Math.random().toString(36).substr(2, 9)}`;
-        localStorage.setItem('vdj_anon_id', userId);
-      }
-    }
 
     const viewedKey = `viewed_${movie.id}_${userId}`;
     localStorage.setItem(viewedKey, 'true');
@@ -347,14 +341,9 @@ const VideoPlayer = ({ movie, onClose, user }) => {
 
 // Registers a movie view once per user/device (same ~37.5% watched rule as the player)
 const registerMovieView = async (movie, user, watchedSeconds = 0) => {
-  let userId = user?.username;
-  if (!userId) {
-    userId = localStorage.getItem('vdj_anon_id');
-    if (!userId) {
-      userId = `anon_${Math.random().toString(36).substr(2, 9)}`;
-      localStorage.setItem('vdj_anon_id', userId);
-    }
-  }
+  // Views/watch time must come from a real account
+  const userId = user?.id;
+  if (!userId) return;
 
   const viewedKey = `viewed_${movie.id}_${userId}`;
   if (localStorage.getItem(viewedKey)) return;
@@ -405,7 +394,17 @@ const MovieBottomSheet = ({ movie, isOpen, onClose, onFullscreen, user }) => {
 
   if (!isOpen || !movie) return null;
 
+  // Watching is restricted to signed-in accounts
+  const requireAccount = () => {
+    if (user) return true;
+    onClose();
+    navigate('/profile');
+    return false;
+  };
+
   const togglePlay = () => {
+    if (!requireAccount()) return;
+
     if (!started) {
       // Mount the inline player; autoPlay takes over from the user gesture
       setStarted(true);
@@ -510,6 +509,7 @@ const MovieBottomSheet = ({ movie, isOpen, onClose, onFullscreen, user }) => {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (!requireAccount()) return;
                   videoRef.current?.pause();
                   onFullscreen(movie);
                 }}
@@ -2607,6 +2607,7 @@ const SeriesDetailScreen = ({ series, onMovieClick, user, onBack }) => {
 // --- App Root ---
 
 const App = () => {
+  const navigate = useNavigate();
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [playingMovie, setPlayingMovie] = useState(null);
@@ -2671,6 +2672,12 @@ const handleSeriesClick = (series) => {
 };
 
 const handleFullscreen = (movie) => {
+  // Watching requires an account
+  if (!user) {
+    setIsSheetOpen(false);
+    navigate('/profile');
+    return;
+  }
   // Open the fullscreen player on top of the description sheet
   setPlayingMovie(movie);
 };
