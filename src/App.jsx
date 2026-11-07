@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Home, Library, Upload, User, Search, Play, X, CheckCircle2, DownloadCloud, ChevronRight, AlertTriangle, Settings, Pause, Maximize, Minimize, Trash2, Image as ImageIcon, TrendingUp, Menu, Clock, Loader2, AlertCircle } from 'lucide-react';
+import { Home, Library, Upload, User, Search, Play, X, CheckCircle2, DownloadCloud, ChevronRight, AlertTriangle, Settings, Pause, Maximize, Minimize, Trash2, Image as ImageIcon, TrendingUp, Menu, Clock, Loader2, AlertCircle, Mail, Phone } from 'lucide-react';
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5000/api' : '/api');
@@ -2144,61 +2144,93 @@ const ProfileScreen = ({ user, onMovieClick, onSeriesClick }) => {
       )}
 
       {user && (
-        <div className="flex flex-col gap-8 animate-slide-up">
-          {/* Hero Profile Header */}
-          <div className="relative h-64 flex items-end px-6 pb-6">
-            {/* Background Aesthetic */}
-            <div className="absolute inset-0 bg-gradient-to-b from-gold/20 via-[#121212] to-[#0a0a0a]" />
-            
-            <div className="flex items-center gap-5 relative z-10 w-full">
-              <div className="w-24 h-24 rounded-3xl bg-[#1e1e1e] border-4 border-[#0a0a0a] flex items-center justify-center text-gold shadow-2xl overflow-hidden">
+        <div className="max-w-5xl mx-auto animate-slide-up">
+          {/* Profile Header */}
+          <div className="relative px-6 pt-12 pb-6">
+            <div className="absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-gold/10 to-transparent pointer-events-none" />
+
+            <div className="relative flex flex-col sm:flex-row sm:items-center gap-5">
+              <div className="w-24 h-24 rounded-2xl bg-[#151515] ring-1 ring-white/10 shadow-xl overflow-hidden flex items-center justify-center text-gold shrink-0">
                 {user.avatar_url ? (
                   <img src={user.avatar_url} alt={user.username} className="w-full h-full object-cover" />
                 ) : (
-                  <User size={48} strokeWidth={1.5} />
+                  <User size={44} strokeWidth={1.5} />
                 )}
               </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <h2 className="font-black text-3xl text-white tracking-tight uppercase italic">{user.username}</h2>
-                  <CheckCircle2 size={20} className="text-blue-500 fill-blue-500/20" />
+
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight truncate">{user.username}</h1>
+                  <CheckCircle2 size={20} className="text-blue-500 fill-blue-500/20 shrink-0" />
                 </div>
-                <p className="text-[10px] text-gold font-black uppercase tracking-[0.2em] mt-1 bg-gold/10 px-2 py-0.5 rounded-md border border-gold/20 inline-block">
+                <span className="inline-block mt-2 text-[10px] font-bold uppercase tracking-[0.15em] text-gold bg-gold/10 border border-gold/20 px-3 py-1 rounded-full">
                   Official VDJ Publisher
-                </p>
+                </span>
+
+                {(user.email || user.phone_number || user.phone) && (
+                  <div className="mt-4 flex flex-col gap-1.5 text-xs text-gray-400">
+                    {user.email && (
+                      <span className="flex items-center gap-2">
+                        <Mail size={14} className="text-gray-500 shrink-0" />
+                        <span className="truncate">{user.email}</span>
+                      </span>
+                    )}
+                    {(user.phone_number || user.phone) && (
+                      <span className="flex items-center gap-2">
+                        <Phone size={14} className="text-gray-500 shrink-0" />
+                        <span>{user.phone_number || user.phone}</span>
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <Link
+                to="/upload"
+                className="hidden sm:inline-flex items-center gap-2 bg-gold text-black text-xs font-black uppercase tracking-wider px-5 py-3 rounded-xl shadow-lg shadow-gold/20 hover:scale-[1.03] active:scale-95 transition-all shrink-0"
+              >
+                <Upload size={16} /> New Upload
+              </Link>
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div className="px-6 mt-2">
+            <div className="grid grid-cols-3 rounded-2xl bg-[#121212] border border-white/5 divide-x divide-white/5 overflow-hidden">
+              <div className="p-4 flex flex-col items-center justify-center text-center gap-1">
+                <Play size={16} className="text-gray-500" fill="currentColor" />
+                <p className="text-xl sm:text-2xl font-black text-white">{userMovies.length}</p>
+                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Publications</p>
+              </div>
+              <div className="p-4 flex flex-col items-center justify-center text-center gap-1">
+                <TrendingUp size={16} className="text-gold" />
+                <p className="text-xl sm:text-2xl font-black text-gold">{totalViews.toLocaleString()}</p>
+                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Total Reach</p>
+              </div>
+              <div className="p-4 flex flex-col items-center justify-center text-center gap-1">
+                <Library size={16} className="text-gray-500" />
+                <p className="text-xl sm:text-2xl font-black text-white">{userSeries.length}</p>
+                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Packs</p>
               </div>
             </div>
           </div>
 
-          {/* Stats Cards */}
-          <div className="px-6 grid grid-cols-2 gap-4">
-            <div className="bg-[#121212] p-4 rounded-2xl border border-white/5 flex flex-col items-center justify-center text-center shadow-lg">
-              <p className="text-[11px] font-black text-gray-500 uppercase tracking-widest mb-1">Publications</p>
-              <p className="text-2xl font-black text-white">{userMovies.length}</p>
-            </div>
-            <div className="bg-[#121212] p-4 rounded-2xl border border-white/5 flex flex-col items-center justify-center text-center shadow-lg">
-              <p className="text-[11px] font-black text-gray-500 uppercase tracking-widest mb-1">Total Reach</p>
-              <p className="text-2xl font-black text-gold">{totalViews.toLocaleString()}</p>
-            </div>
-          </div>
-
-          {/* My Collection Section */}
-          <div className="px-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-sm font-black text-white uppercase tracking-[0.1em] flex items-center gap-2">
-                <Play size={18} className="text-gold" fill="currentColor" />
-                Your Uplifts
-              </h3>
-              <Link to="/upload" className="text-[10px] font-black text-gold border-b border-gold/30 pb-0.5">NEW UPLOAD</Link>
+          {/* Library */}
+          <div className="px-6 mt-8">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-black text-white uppercase tracking-[0.12em]">Your Library</h3>
+              <Link to="/upload" className="sm:hidden text-[11px] font-bold text-gold flex items-center gap-1">
+                <Upload size={14} /> Upload
+              </Link>
             </div>
 
-            {/* Tabs */}
-            <div className="flex bg-black/50 rounded-2xl p-1 mb-6">
+            {/* Segmented tabs */}
+            <div className="inline-flex bg-[#121212] border border-white/5 rounded-xl p-1 mb-6">
               <button
                 type="button"
                 onClick={() => setActiveTab('single')}
-                className={`flex-1 py-2 px-4 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
-                  activeTab === 'single' ? 'bg-gold text-black' : 'text-gray-400 hover:text-white'
+                className={`py-2 px-6 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                  activeTab === 'single' ? 'bg-gold text-black shadow' : 'text-gray-400 hover:text-white'
                 }`}
               >
                 Single
@@ -2206,8 +2238,8 @@ const ProfileScreen = ({ user, onMovieClick, onSeriesClick }) => {
               <button
                 type="button"
                 onClick={() => setActiveTab('packs')}
-                className={`flex-1 py-2 px-4 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
-                  activeTab === 'packs' ? 'bg-gold text-black' : 'text-gray-400 hover:text-white'
+                className={`py-2 px-6 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                  activeTab === 'packs' ? 'bg-gold text-black shadow' : 'text-gray-400 hover:text-white'
                 }`}
               >
                 Packs
@@ -2302,30 +2334,33 @@ const ProfileScreen = ({ user, onMovieClick, onSeriesClick }) => {
             )}
           </div>
 
-          {/* Quick Actions / Settings */}
-          <div className="px-6 flex flex-col gap-3 pb-10">
-            <button className="flex items-center justify-between p-4 bg-[#121212] rounded-2xl text-[11px] font-black text-gray-400 border border-white/5 hover:bg-[#1a1a1a] transition-all">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500">
-                  <Settings size={18} />
+          {/* Settings */}
+          <div className="px-6 mt-10 pb-10">
+            <h3 className="text-sm font-black text-white uppercase tracking-[0.12em] mb-4">Account</h3>
+            <div className="flex flex-col gap-2">
+              <button className="group flex items-center justify-between p-4 bg-[#121212] rounded-2xl text-xs font-bold text-gray-300 border border-white/5 hover:border-white/10 hover:bg-[#171717] transition-all">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500">
+                    <Settings size={18} />
+                  </div>
+                  Account Configuration
                 </div>
-                ACCOUNT CONFIGURATION
-              </div>
-              <ChevronRight size={18} className="text-gray-700" />
-            </button>
-            
-            <button 
-              onClick={() => {
-                if (window.CoolzAuthClient) {
-                  const client = new window.CoolzAuthClient({ baseUrl: 'https://authcoolztech.vercel.app' });
-                  client.logout();
-                  window.location.reload();
-                }
-              }}
-              className="flex items-center justify-center p-4 bg-red-500/5 rounded-2xl text-[11px] font-black text-red-500 border border-red-500/10 active:bg-red-500/10 transition-all uppercase tracking-widest"
-            >
-              Terminate Session
-            </button>
+                <ChevronRight size={18} className="text-gray-600 group-hover:text-gray-400 transition-colors" />
+              </button>
+
+              <button
+                onClick={() => {
+                  if (window.CoolzAuthClient) {
+                    const client = new window.CoolzAuthClient({ baseUrl: 'https://authcoolztech.vercel.app' });
+                    client.logout();
+                    window.location.reload();
+                  }
+                }}
+                className="flex items-center justify-center gap-2 p-4 rounded-2xl text-xs font-bold text-red-400 border border-red-500/10 bg-red-500/5 hover:bg-red-500/10 active:scale-[0.99] transition-all"
+              >
+                <X size={16} /> Sign Out
+              </button>
+            </div>
           </div>
         </div>
       )}
