@@ -1082,6 +1082,9 @@ apiRouter.put('/movies/:id', async (req, res) => {
 // Maximum credible watch time per session (6 hours) - guards against inflated/fraudulent values
 const MAX_SESSION_SECONDS = 6 * 60 * 60;
 
+// Registered account ids are UUIDs (see users.id); anything else is anonymous
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // Register a unique view and record the eligible watch session (for watch-time analytics)
 apiRouter.post('/movies/:id/view', async (req, res) => {
     const movieId = req.params.id;
@@ -1091,8 +1094,13 @@ apiRouter.post('/movies/:id/view', async (req, res) => {
         return res.status(400).json({ error: 'User ID is required' });
     }
 
+    // Views and watch time must come from a registered account (UUID), not anonymous ids
+    if (!UUID_RE.test(String(userId))) {
+        return res.status(403).json({ error: 'An account is required to view content' });
+    }
+
     // Record the watch session independently of the view counter so analytics survive
-    // even if the legacy view insert is rejected (e.g. non-UUID ids).
+    // even if the legacy view insert is rejected.
     const seconds = Math.max(0, Math.min(parseInt(watchedSeconds, 10) || 0, MAX_SESSION_SECONDS));
     if (seconds > 0) {
         try {
@@ -1135,10 +1143,11 @@ apiRouter.get('/stats/watch-time/:name', async (req, res) => {
             `SELECT COALESCE(SUM(LEAST(ws.watched_seconds, $2)), 0) AS total_seconds
              FROM watch_sessions ws
              JOIN movies m ON m.id = ws.movie_id
+             LEFT JOIN users pu ON pu.username = m.publisher_name
              WHERE m.publisher_name = $1
                AND ws.is_valid = true
                AND ws.watched_seconds >= 10
-               AND ws.user_id <> m.publisher_name
+               AND (pu.id IS NULL OR ws.user_id <> pu.id::text)
                AND ws.created_at >= date_trunc('month', NOW())`,
             [req.params.name, MAX_SESSION_SECONDS]
         );
