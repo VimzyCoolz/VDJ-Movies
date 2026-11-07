@@ -1,9 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Home, Library, Upload, User, Search, Play, X, CheckCircle2, DownloadCloud, ChevronRight, AlertTriangle, Settings, Pause, Maximize, Minimize, Trash2, Image as ImageIcon, TrendingUp, Menu, Clock, Loader2, AlertCircle, Mail, Phone } from 'lucide-react';
+import { Home, Library, Upload, User, Search, Play, X, CheckCircle2, DownloadCloud, ChevronRight, AlertTriangle, Settings, Pause, Maximize, Minimize, Trash2, Image as ImageIcon, TrendingUp, Menu, Clock, Loader2, AlertCircle, Mail, Phone, RefreshCw } from 'lucide-react';
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5000/api' : '/api');
+
+// Compact duration for the per-movie watch-time badges (seconds -> 45s / 12m / 1.5h)
+const formatDuration = (totalSeconds) => {
+  const s = Math.max(0, Math.round(Number(totalSeconds) || 0));
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  return `${(s / 3600).toFixed(1)}h`;
+};
 
 // Record a play - fires the moment playback starts, in either the inline preview or the
 // fullscreen player. Reach and views are tied to registered users, and the backend
@@ -2069,6 +2077,7 @@ const ProfileScreen = ({ user, onMovieClick, onSeriesClick }) => {
   const [userSeries, setUserSeries] = useState([]);
   const [watchTimeSeconds, setWatchTimeSeconds] = useState(0);
   const [reach, setReach] = useState(0);
+  const [statsRefreshing, setStatsRefreshing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [activeTab, setActiveTab] = useState('single'); // 'single' or 'packs'
@@ -2087,16 +2096,16 @@ const ProfileScreen = ({ user, onMovieClick, onSeriesClick }) => {
     }
   }, [user]);
 
-  const fetchUserMovies = async () => {
+  const fetchUserMovies = async (showSpinner = true) => {
     if (!user) return;
-    setLoading(true);
+    if (showSpinner) setLoading(true);
     try {
       const response = await axios.get(`${API_BASE_URL}/movies/publisher/${user.username}`);
       setUserMovies(Array.isArray(response.data) ? response.data : []);
     } catch (err) {
       console.error("Failed to fetch user movies:", err);
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
   };
 
@@ -2128,6 +2137,14 @@ const ProfileScreen = ({ user, onMovieClick, onSeriesClick }) => {
     } catch (err) {
       console.error("Failed to fetch reach:", err);
     }
+  };
+
+  // Manual refresh for the profile stat cards (and the per-movie numbers)
+  const refreshStats = async () => {
+    if (statsRefreshing) return;
+    setStatsRefreshing(true);
+    await Promise.all([fetchReach(), fetchWatchTime(), fetchUserMovies(false)]);
+    setStatsRefreshing(false);
   };
 
   useEffect(() => {
@@ -2228,7 +2245,16 @@ const ProfileScreen = ({ user, onMovieClick, onSeriesClick }) => {
                 <p className="text-xl sm:text-2xl font-black text-white">{userMovies.length}</p>
                 <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Publications</p>
               </div>
-              <div className="p-4 bg-[#121212] flex flex-col items-center justify-center text-center gap-1">
+              <div className="relative p-4 bg-[#121212] flex flex-col items-center justify-center text-center gap-1">
+                <button
+                  onClick={refreshStats}
+                  disabled={statsRefreshing}
+                  title="Refresh stats"
+                  aria-label="Refresh stats"
+                  className="absolute top-2 right-2 p-1 text-gray-500 hover:text-gold transition-colors disabled:opacity-60"
+                >
+                  <RefreshCw size={13} className={statsRefreshing ? 'animate-spin' : ''} />
+                </button>
                 <TrendingUp size={16} className="text-gold" />
                 <p className="text-xl sm:text-2xl font-black text-gold">{reach.toLocaleString()}</p>
                 <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Total Reach</p>
@@ -2238,7 +2264,16 @@ const ProfileScreen = ({ user, onMovieClick, onSeriesClick }) => {
                 <p className="text-xl sm:text-2xl font-black text-white">{userSeries.length}</p>
                 <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Packs</p>
               </div>
-              <div className="p-4 bg-[#121212] flex flex-col items-center justify-center text-center gap-1">
+              <div className="relative p-4 bg-[#121212] flex flex-col items-center justify-center text-center gap-1">
+                <button
+                  onClick={refreshStats}
+                  disabled={statsRefreshing}
+                  title="Refresh stats"
+                  aria-label="Refresh stats"
+                  className="absolute top-2 right-2 p-1 text-gray-500 hover:text-gold transition-colors disabled:opacity-60"
+                >
+                  <RefreshCw size={13} className={statsRefreshing ? 'animate-spin' : ''} />
+                </button>
                 <Clock size={16} className="text-gold" />
                 <p className="text-xl sm:text-2xl font-black text-white">{watchTimeHours} hrs</p>
                 <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Watch Time</p>
@@ -2308,10 +2343,20 @@ const ProfileScreen = ({ user, onMovieClick, onSeriesClick }) => {
                           alt={movie.title} 
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60 group-hover:opacity-80 transition-opacity" />
-                        <div className="absolute bottom-2 left-2 right-2 flex justify-between items-center">
-                          <div className="px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded-md border border-white/10 flex items-center gap-1">
+                        <div className="absolute bottom-2 left-2 right-2 flex justify-between items-center gap-1">
+                          <div
+                            title="Total Reach (users who pressed play)"
+                            className="px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded-md border border-white/10 flex items-center gap-1"
+                          >
                             <Play size={8} className="text-gold" fill="currentColor" />
-                            <span className="text-[9px] font-black text-white">{movie.views}</span>
+                            <span className="text-[9px] font-black text-white">{movie.views || 0}</span>
+                          </div>
+                          <div
+                            title="Watch Time this month"
+                            className="px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded-md border border-white/10 flex items-center gap-1"
+                          >
+                            <Clock size={8} className="text-gold" />
+                            <span className="text-[9px] font-black text-white">{formatDuration(movie.watch_seconds)}</span>
                           </div>
                         </div>
                       </div>
