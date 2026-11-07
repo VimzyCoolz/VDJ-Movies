@@ -44,6 +44,7 @@ const VideoPlayer = ({ movie, onClose, user }) => {
   const [isLocked, setIsLocked] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const controlsTimeoutRef = useRef(null);
+  const watchedTimeRef = useRef(0);
 
   useEffect(() => {
     // Check if already viewed in this session/device to prevent redundant logic
@@ -54,28 +55,53 @@ const VideoPlayer = ({ movie, onClose, user }) => {
     }
   }, [movie.id, user]);
 
+  // Count every second actually played (for watch-time), and register the view
+  // once the 37.5% threshold is reached.
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    // Accumulator logic: count actual seconds played
     const interval = setInterval(() => {
-      if (video && !video.paused && !video.seeking && !viewRegistered && duration > 0) {
-        setWatchedTime(prev => {
-          const nextTime = prev + 1;
-          const threshold = duration * 0.375;
-          
-          if (nextTime >= threshold) {
-            registerView(nextTime);
-            return nextTime;
-          }
-          return nextTime;
-        });
+      if (video && !video.paused && !video.seeking && duration > 0) {
+        const nextTime = watchedTimeRef.current + 1;
+        watchedTimeRef.current = nextTime;
+        setWatchedTime(nextTime);
+
+        if (!viewRegistered && nextTime >= duration * 0.375) {
+          registerView(nextTime);
+        }
+
+        // Persist periodically so watch time survives the player closing
+        if (nextTime % 10 === 0) {
+          postWatchTime(nextTime);
+        }
       }
     }, 1000);
 
     return () => clearInterval(interval);
   }, [duration, viewRegistered]);
+
+  // Flush the final watch time when the player closes
+  useEffect(() => {
+    return () => {
+      if (watchedTimeRef.current > 0) postWatchTime(watchedTimeRef.current);
+    };
+  }, []);
+
+  // Persist accumulated watch time (analytics only, independent of the view counter)
+  const postWatchTime = async (watchedSeconds) => {
+    const userId = user?.id;
+    const seconds = Math.round(watchedSeconds || 0);
+    if (!userId || seconds <= 0) return;
+    try {
+      await axios.post(`${API_BASE_URL}/movies/${movie.id}/watch`, {
+        userId,
+        watchedSeconds: seconds,
+      });
+    } catch (err) {
+      // Analytics only - never block playback
+    }
+  };
 
   const registerView = async (watchedSeconds = 0) => {
     if (viewRegistered) return;
@@ -365,6 +391,17 @@ const MovieBottomSheet = ({ movie, isOpen, onClose, onFullscreen, user }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const videoRef = useRef(null);
+  const watchedRef = useRef(0);
+
+  // Persist watch time accrued in the inline preview (analytics only)
+  const flushPreviewWatchTime = () => {
+    const seconds = Math.round(watchedRef.current);
+    if (seconds <= 0 || !user?.id || !movie?.id) return;
+    axios.post(`${API_BASE_URL}/movies/${movie.id}/watch`, {
+      userId: user.id,
+      watchedSeconds: seconds,
+    }).catch(() => {});
+  };
 
   // Reset inline playback whenever the sheet closes or a new movie opens
   useEffect(() => {
@@ -373,23 +410,30 @@ const MovieBottomSheet = ({ movie, isOpen, onClose, onFullscreen, user }) => {
     setPreviewLoading(false);
   }, [movie?.id, isOpen]);
 
-  // Count views for inline playback without forcing fullscreen
+  // Count watched seconds for inline playback; register the view at 37.5%
   useEffect(() => {
     if (!started || !movie) return;
     const video = videoRef.current;
     if (!video) return;
 
-    let watched = 0;
+    watchedRef.current = 0;
+    let viewSent = false;
     const interval = setInterval(() => {
       if (video.paused || video.seeking || !video.duration) return;
-      watched += 1;
-      if (watched >= video.duration * 0.375) {
-        clearInterval(interval);
-        registerMovieView(movie, user, watched);
+      watchedRef.current += 1;
+      if (!viewSent && watchedRef.current >= video.duration * 0.375) {
+        viewSent = true;
+        registerMovieView(movie, user, watchedRef.current);
+      }
+      if (watchedRef.current % 10 === 0) {
+        flushPreviewWatchTime();
       }
     }, 1000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      flushPreviewWatchTime();
+    };
   }, [started, movie, user]);
 
   if (!isOpen || !movie) return null;
@@ -2070,6 +2114,7 @@ const ProfileScreen = ({ user, onMovieClick, onSeriesClick }) => {
   const [userMovies, setUserMovies] = useState([]);
   const [userSeries, setUserSeries] = useState([]);
   const [watchTimeSeconds, setWatchTimeSeconds] = useState(0);
+  const [reach, setReach] = useState(0);
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [activeTab, setActiveTab] = useState('single'); // 'single' or 'packs'
@@ -2121,10 +2166,21 @@ const ProfileScreen = ({ user, onMovieClick, onSeriesClick }) => {
     }
   };
 
+  const fetchReach = async () => {
+    if (!user) return;
+    try {
+      const response = await axios.get(`${API_BASE_URL}/stats/reach/${encodeURIComponent(user.username)}`);
+      setReach(response.data.reach || 0);
+    } catch (err) {
+      console.error("Failed to fetch reach:", err);
+    }
+  };
+
   useEffect(() => {
     fetchUserMovies();
     fetchUserSeries();
     fetchWatchTime();
+    fetchReach();
   }, [user]);
 
   const handleDelete = async (e, movieId) => {
@@ -2149,7 +2205,6 @@ const ProfileScreen = ({ user, onMovieClick, onSeriesClick }) => {
     }
   };
 
-  const totalViews = userMovies.reduce((acc, movie) => acc + (movie.views || 0), 0);
   const watchTimeHours = (watchTimeSeconds / 3600).toFixed(2);
 
   return (
@@ -2221,7 +2276,7 @@ const ProfileScreen = ({ user, onMovieClick, onSeriesClick }) => {
               </div>
               <div className="p-4 bg-[#121212] flex flex-col items-center justify-center text-center gap-1">
                 <TrendingUp size={16} className="text-gold" />
-                <p className="text-xl sm:text-2xl font-black text-gold">{totalViews.toLocaleString()}</p>
+                <p className="text-xl sm:text-2xl font-black text-gold">{reach.toLocaleString()}</p>
                 <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Total Reach</p>
               </div>
               <div className="p-4 bg-[#121212] flex flex-col items-center justify-center text-center gap-1">
@@ -2663,6 +2718,10 @@ const App = () => {
   }, []);
 
   const handleMovieClick = (movie) => {
+  // Count this catalog click toward the publisher's reach (unique per user/movie)
+  if (user?.id && movie?.id) {
+    axios.post(`${API_BASE_URL}/movies/${movie.id}/click`, { userId: user.id }).catch(() => {});
+  }
   setSelectedMovie(movie);
   setIsSheetOpen(true);
 };

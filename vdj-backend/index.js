@@ -277,6 +277,22 @@ app.use('/api', apiRouter);
     } catch (error) {
         console.error(`[${new Date().toISOString()}] WATCH_SESSIONS_TABLE_ERROR:`, error.message);
     }
+
+    try {
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS movie_clicks (
+              id SERIAL PRIMARY KEY,
+              movie_id integer NOT NULL,
+              user_id text NOT NULL,
+              created_at timestamp with time zone DEFAULT NOW(),
+              CONSTRAINT movie_clicks_movie_id_fkey FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE,
+              UNIQUE(movie_id, user_id)
+            )
+        `);
+        console.log(`[${new Date().toISOString()}] movie_clicks table ready`);
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] MOVIE_CLICKS_TABLE_ERROR:`, error.message);
+    }
 })();
 
 // Stream Thumbnail Images from Cloud (Moved to a higher position)
@@ -1085,6 +1101,24 @@ const MAX_SESSION_SECONDS = 6 * 60 * 60;
 // Registered account ids are UUIDs (see users.id); anything else is anonymous
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Store (or raise) the watch time a user has accumulated on a movie.
+// Keeps the highest value seen so repeated/partial reports never lower it.
+const upsertWatchSession = async (movieId, userId, watchedSeconds) => {
+    const seconds = Math.max(0, Math.min(parseInt(watchedSeconds, 10) || 0, MAX_SESSION_SECONDS));
+    if (seconds <= 0) return;
+    try {
+        await db.query(
+            `INSERT INTO watch_sessions (movie_id, user_id, watched_seconds)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (movie_id, user_id)
+             DO UPDATE SET watched_seconds = GREATEST(watch_sessions.watched_seconds, EXCLUDED.watched_seconds)`,
+            [movieId, String(userId), seconds]
+        );
+    } catch (sessionError) {
+        console.error(`[${new Date().toISOString()}] WATCH_SESSION_ERROR:`, sessionError.message);
+    }
+};
+
 // Register a unique view and record the eligible watch session (for watch-time analytics)
 apiRouter.post('/movies/:id/view', async (req, res) => {
     const movieId = req.params.id;
@@ -1099,19 +1133,8 @@ apiRouter.post('/movies/:id/view', async (req, res) => {
         return res.status(403).json({ error: 'An account is required to view content' });
     }
 
-    // Record the watch session independently of the view counter so analytics survive
-    // even if the legacy view insert is rejected.
-    const seconds = Math.max(0, Math.min(parseInt(watchedSeconds, 10) || 0, MAX_SESSION_SECONDS));
-    if (seconds > 0) {
-        try {
-            await db.query(
-                'INSERT INTO watch_sessions (movie_id, user_id, watched_seconds) VALUES ($1, $2, $3) ON CONFLICT (movie_id, user_id) DO NOTHING',
-                [movieId, String(userId), seconds]
-            );
-        } catch (sessionError) {
-            console.error(`[${new Date().toISOString()}] WATCH_SESSION_ERROR:`, sessionError.message);
-        }
-    }
+    // Record the watch session alongside the view (kept at the highest value seen)
+    await upsertWatchSession(movieId, userId, watchedSeconds);
 
     try {
         // Use an UPSERT-like approach with INSERT IGNORE (or ON CONFLICT DO NOTHING in PG)
@@ -1146,7 +1169,7 @@ apiRouter.get('/stats/watch-time/:name', async (req, res) => {
              LEFT JOIN users pu ON pu.username = m.publisher_name
              WHERE m.publisher_name = $1
                AND ws.is_valid = true
-               AND ws.watched_seconds >= 10
+               AND ws.watched_seconds >= 1
                AND (pu.id IS NULL OR ws.user_id <> pu.id::text)
                AND ws.created_at >= date_trunc('month', NOW())`,
             [req.params.name, MAX_SESSION_SECONDS]
@@ -1155,6 +1178,63 @@ apiRouter.get('/stats/watch-time/:name', async (req, res) => {
     } catch (error) {
         console.error(`[${new Date().toISOString()}] WATCH_TIME_ERROR:`, error);
         res.status(500).json({ error: 'Failed to compute watch time', details: error.message });
+    }
+});
+
+// Record watched seconds as they accumulate (independent of the view counter)
+apiRouter.post('/movies/:id/watch', async (req, res) => {
+    const movieId = req.params.id;
+    const { userId, watchedSeconds } = req.body;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'User ID is required' });
+    }
+    if (!UUID_RE.test(String(userId))) {
+        return res.status(403).json({ error: 'An account is required to record watch time' });
+    }
+
+    await upsertWatchSession(movieId, userId, watchedSeconds);
+    return res.json({ success: true });
+});
+
+// Record that a user clicked a movie from the catalog (unique per user per movie)
+apiRouter.post('/movies/:id/click', async (req, res) => {
+    const movieId = req.params.id;
+    const { userId } = req.body;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'User ID is required' });
+    }
+    if (!UUID_RE.test(String(userId))) {
+        return res.status(403).json({ error: 'An account is required' });
+    }
+
+    try {
+        await db.query(
+            'INSERT INTO movie_clicks (movie_id, user_id) VALUES ($1, $2) ON CONFLICT (movie_id, user_id) DO NOTHING',
+            [movieId, String(userId)]
+        );
+        return res.json({ success: true });
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] MOVIE_CLICK_ERROR:`, error);
+        res.status(500).json({ error: 'Failed to record click', details: error.message });
+    }
+});
+
+// Publisher reach = distinct users who clicked any of the publisher's movies from the catalog
+apiRouter.get('/stats/reach/:name', async (req, res) => {
+    try {
+        const result = await db.query(
+            `SELECT COUNT(DISTINCT mc.user_id) AS reach
+             FROM movie_clicks mc
+             JOIN movies m ON m.id = mc.movie_id
+             WHERE m.publisher_name = $1`,
+            [req.params.name]
+        );
+        res.json({ reach: Number(result.rows[0].reach) || 0 });
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] REACH_ERROR:`, error);
+        res.status(500).json({ error: 'Failed to compute reach', details: error.message });
     }
 });
 
